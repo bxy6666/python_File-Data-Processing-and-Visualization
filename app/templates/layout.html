@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>{% block title %}DataFlow{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <a class="sidebar-logo" href="{{ url_for('main.dashboard') }}" aria-label="返回工作台">
+          <span class="logo-mark">DF</span>
+          <span class="logo-text">
+            <strong>DataFlow</strong>
+            <small>交互式数据分析</small>
+          </span>
+        </a>
+
+        <nav class="sidebar-nav">
+          <a class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="{{ url_for('main.dashboard') }}">
+            <span class="nav-icon">01</span>
+            <span>工作台</span>
+          </a>
+          <a class="nav-item {% if active_page == 'documents' %}active{% endif %}" href="{{ url_for('main.documents') }}">
+            <span class="nav-icon">02</span>
+            <span>数据管理</span>
+          </a>
+          <a class="nav-item {% if active_page == 'workflow' %}active{% endif %}" href="{{ url_for('main.workflow') }}">
+            <span class="nav-icon">03</span>
+            <span>处理流程</span>
+          </a>
+          <a class="nav-item {% if active_page == 'visualization' %}active{% endif %}" href="{{ url_for('main.visualization') }}">
+            <span class="nav-icon">04</span>
+            <span>图表分析</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>
+          <span>准备处理数据</span>
+        </div>
+      </aside>
+
+      <div class="main-area">
+        <header class="page-topbar">
+          <div>
+            <h1>{% block page_title %}工作台{% endblock %}</h1>
+            <p>{% block page_subtitle %}从上传数据到生成图表，按步骤完成一次分析。{% endblock %}</p>
+          </div>
+        </header>
+
+        <main class="page-content">
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

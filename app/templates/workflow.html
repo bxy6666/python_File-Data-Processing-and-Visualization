@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+
+{% block title %}处理流程 - DataFlow{% endblock %}
+{% block page_title %}处理流程{% endblock %}
+{% block page_subtitle %}确认清洗规则和聚类数量，再导出处理后的结果。{% endblock %}
+
+{% block content %}
+  <section class="steps-header panel-card">
+    <div class="workflow-track">
+      <span>上传数据</span>
+      <i></i>
+      <span>数据清洗</span>
+      <i></i>
+      <span>K-Means 分析</span>
+      <i></i>
+      <span>结果导出</span>
+    </div>
+  </section>
+
+  <div class="content-grid">
+    <section class="flow-panel">
+      <div class="steps">
+        <section class="step" data-step="clean" data-state="idle" aria-labelledby="clean-title">
+          <div class="step-head">
+            <div class="step-index">01</div>
+            <div>
+              <h3 id="clean-title">数据清洗</h3>
+              <p>选择需要执行的清洗操作，减少缺失、重复和异常数据带来的干扰。</p>
+            </div>
+            <span id="clean-state" class="step-state">待调用</span>
+          </div>
+          <div class="option-row">
+            <label><input id="drop-missing" type="checkbox" checked> 删除缺失值</label>
+            <label><input id="drop-duplicates" type="checkbox" checked> 删除重复行</label>
+            <label><input id="handle-outliers" type="checkbox"> 检测异常值</label>
+          </div>
+          <button id="clean-button" type="button">开始清洗</button>
+          <p class="step-hint" id="clean-hint">下一步：完成清洗后进入聚类分析。</p>
+        </section>
+
+        <section class="step" data-step="analyze" data-state="idle" aria-labelledby="analyze-title">
+          <div class="step-head">
+            <div class="step-index">02</div>
+            <div>
+              <h3 id="analyze-title">K-Means 分析</h3>
+              <p>设置聚类数量，系统会自动选择适合的数值字段进行分析。</p>
+            </div>
+            <span id="analyze-state" class="step-state">待调用</span>
+          </div>
+          <div class="field-grid">
+            <label>
+              k 值
+              <input id="cluster-count" type="number" min="2" max="6" value="3">
+            </label>
+          </div>
+          <button id="analyze-button" type="button">开始分析</button>
+          <p class="step-hint" id="analyze-hint">下一步：分析完成后创建图表。</p>
+        </section>
+
+        <section id="export-panel" class="step" data-step="export" data-state="idle" aria-labelledby="export-title">
+          <div class="step-head">
+            <div class="step-index">03</div>
+            <div>
+              <h3 id="export-title">结果导出</h3>
+              <p>根据需要导出清洗后的数据或分析结果。</p>
+            </div>
+            <span id="export-state" class="step-state">待调用</span>
+          </div>
+          <div class="button-row">
+            <button data-export-type="cleaned" type="button">导出清洗数据</button>
+            <button data-export-type="result" type="button">导出分析结果</button>
+          </div>
+          <p class="step-hint" id="export-hint">完成处理后，可下载对应结果文件。</p>
+        </section>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <section class="panel-card">
+        <div class="section-heading compact">
+          <p class="eyebrow">Response</p>
+          <h2>响应详情</h2>
+        </div>
+        <div id="message" class="message" aria-live="polite">等待操作。</div>
+        <pre id="response-output">{}</pre>
+      </section>
+    </aside>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% endblock %}

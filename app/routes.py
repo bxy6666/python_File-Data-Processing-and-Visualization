@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 
 from .utils.chart_utils import create_chart_response
 
@@ -21,7 +21,27 @@ def not_implemented(owner):
 
 @bp.route("/")
 def index():
-    return render_template("index.html")
+    return redirect(url_for("main.dashboard"))
+
+
+@bp.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html", active_page="dashboard")
+
+
+@bp.route("/documents")
+def documents():
+    return render_template("documents.html", active_page="documents")
+
+
+@bp.route("/workflow")
+def workflow():
+    return render_template("workflow.html", active_page="workflow")
+
+
+@bp.route("/visualization")
+def visualization():
+    return render_template("visualization.html", active_page="visualization")
 
 
 @bp.post("/api/upload")
@@ -42,10 +62,7 @@ def analyze_data():
 @bp.get("/api/visualize")
 def visualize_data():
     chart = request.args.get("chart", "scatter")
-    x_field = request.args.get("x", "")
-    y_field = request.args.get("y", "")
-    color_field = request.args.get("color", "")
-    return create_chart_response(chart, x_field, y_field, color_field)
+    return create_chart_response(chart)
 
 
 @bp.get("/api/export")

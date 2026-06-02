@@ -4,7 +4,7 @@ from flask import jsonify
 SUPPORTED_CHARTS = {"bar", "line", "scatter", "box"}
 
 
-def create_chart_response(chart, x_field, y_field, color_field=None):
+def create_chart_response(chart):
     if chart not in SUPPORTED_CHARTS:
         return (
             jsonify(
@@ -24,11 +24,9 @@ def create_chart_response(chart, x_field, y_field, color_field=None):
                 "code": "DATA_NOT_READY",
                 "owner": "成员D",
                 "message": "等待上传、清洗或分析模块接入后生成图表",
+                "description": "数据准备完成后，系统会自动选择适合的展示内容并生成图表说明。",
                 "request": {
                     "chart": chart,
-                    "x": x_field,
-                    "y": y_field,
-                    "color": color_field or "",
                 },
             }
         ),

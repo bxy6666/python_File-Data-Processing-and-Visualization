@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+
+{% block title %}工作台 - DataFlow{% endblock %}
+{% block page_title %}工作台{% endblock %}
+{% block page_subtitle %}查看当前数据状态，并按顺序完成上传、处理、图表和导出。{% endblock %}
+
+{% block content %}
+  <section class="flow-hero">
+    <div class="flow-hero-copy">
+      <p class="welcome-tag">Data Workflow</p>
+      <h2>DataFlow 数据处理工作台</h2>
+      <p>围绕一个数据集完成上传、清洗、聚类、出图和导出，下方展示每一步的当前状态。</p>
+      <div class="welcome-actions">
+        <a class="primary-action" href="{{ url_for('main.documents') }}">上传数据</a>
+        <a class="ghost-action" href="{{ url_for('main.workflow') }}">进入流程</a>
+        <a class="ghost-action" href="{{ url_for('main.visualization') }}">创建图表</a>
+      </div>
+    </div>
+    <div class="flow-map" aria-hidden="true">
+      <span class="flow-node is-active"></span>
+      <span class="flow-link"></span>
+      <span class="flow-node"></span>
+      <span class="flow-link"></span>
+      <span class="flow-node"></span>
+      <span class="flow-link"></span>
+      <span class="flow-node"></span>
+      <span class="flow-link"></span>
+      <span class="flow-node"></span>
+    </div>
+  </section>
+
+  <section class="flow-status-grid" aria-label="流程状态">
+    <a class="flow-status-card is-current" href="{{ url_for('main.documents') }}">
+      <span>01</span>
+      <strong>待上传</strong>
+      <small>选择 CSV 或 Excel 文件</small>
+    </a>
+    <a class="flow-status-card" href="{{ url_for('main.workflow') }}">
+      <span>02</span>
+      <strong>待清洗</strong>
+      <small>确认缺失、重复、异常处理</small>
+    </a>
+    <a class="flow-status-card" href="{{ url_for('main.workflow') }}">
+      <span>03</span>
+      <strong>待分析</strong>
+      <small>设置 K-Means 聚类数量</small>
+    </a>
+    <a class="flow-status-card" href="{{ url_for('main.visualization') }}">
+      <span>04</span>
+      <strong>待出图</strong>
+      <small>选择图表类型并查看预览</small>
+    </a>
+    <a class="flow-status-card" href="{{ url_for('main.workflow') }}#export-panel">
+      <span>05</span>
+      <strong>待导出</strong>
+      <small>下载处理结果</small>
+    </a>
+  </section>
+
+  <section class="section-stack">
+    <div class="section-heading">
+      <p class="eyebrow">Workflow</p>
+      <h2>开始一次分析</h2>
+      <p>每张任务卡都对应一个页面，按顺序完成即可。</p>
+    </div>
+    <div class="guide-steps">
+      <a class="guide-step" href="{{ url_for('main.documents') }}">
+        <span>1</span>
+        <h3>上传数据</h3>
+        <p>选择 CSV 或 Excel 文件，准备后续处理。</p>
+      </a>
+      <a class="guide-step" href="{{ url_for('main.workflow') }}">
+        <span>2</span>
+        <h3>清洗数据</h3>
+        <p>确认缺失值、重复行和异常值处理方式。</p>
+      </a>
+      <a class="guide-step" href="{{ url_for('main.visualization') }}">
+        <span>3</span>
+        <h3>创建图表</h3>
+        <p>用图表类型卡片快速选择展示方式。</p>
+      </a>
+      <a class="guide-step" href="{{ url_for('main.workflow') }}#export-panel">
+        <span>4</span>
+        <h3>导出结果</h3>
+        <p>下载清洗数据或分析结果。</p>
+      </a>
+    </div>
+  </section>
+{% endblock %}
