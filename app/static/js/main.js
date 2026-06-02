@@ -187,14 +187,15 @@ if (visualForm) {
     });
 
     const { response, data } = await requestJson(`/api/visualize?${params.toString()}`);
+    const responseData = data.data || {};
 
-    if (data.figure && chartEl) {
+    if (responseData.figure && chartEl) {
       if (visualPanel) {
         visualPanel.dataset.state = "success";
       }
-      Plotly.react(chartEl, data.figure.data, data.figure.layout || {}, { responsive: true });
+      Plotly.react(chartEl, responseData.figure.data, responseData.figure.layout || {}, { responsive: true });
       if (chartDescriptionEl) {
-        chartDescriptionEl.textContent = data.description || "图表已创建。";
+        chartDescriptionEl.textContent = responseData.description || "图表已创建。";
       }
       return;
     }
@@ -207,7 +208,7 @@ if (visualForm) {
       chartEl.textContent = "请先完成上传、清洗或分析后再生成图表。";
     }
     if (chartDescriptionEl) {
-      chartDescriptionEl.textContent = data.description || "数据准备完成后，系统会自动选择展示内容并生成图表说明。";
+      chartDescriptionEl.textContent = responseData.description || "数据准备完成后，系统会自动选择展示内容并生成图表说明。";
     }
   });
 }
