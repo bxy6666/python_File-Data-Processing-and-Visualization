@@ -6,15 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="b2713115-0025-412e-be2c-0dcddd8fc779" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/routes.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/routes.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/static/js/main.js" beforeDir="false" afterPath="$PROJECT_DIR$/app/static/js/main.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/utils/chart_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/utils/chart_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/utils/clean_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/utils/clean_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/utils/file_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/utils/file_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/utils/ml_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/utils/ml_utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/change-log-ai.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/change-log-ai.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/project-context.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/project-context.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -45,6 +36,11 @@
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RunAnythingCache">
+    <option name="myCommands">
+      <command value="pip " />
+    </option>
+  </component>
   <component name="RunManager">
     <configuration name="python_File-Data-Processing-and-Visualization" type="PythonConfigurationType" factoryName="Python">
       <module name="python_File-Data-Processing-and-Visualization" />
@@ -87,7 +83,7 @@
       <option name="presentableId" value="Default" />
       <updated>1780381992111</updated>
       <workItem from="1780381993354" duration="97000" />
-      <workItem from="1780400569219" duration="1549000" />
+      <workItem from="1780400569219" duration="2257000" />
     </task>
     <servers />
   </component>
