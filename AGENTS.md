@@ -11,7 +11,7 @@
 - 可视化：Plotly / Plotly.js
 - 后续数据处理：Pandas、NumPy
 - 后续机器学习：scikit-learn
-- 数据存储：优先 SQLite 或本地文件缓存
+- 数据存储：优先 SQLite
 
 ## 分工边界
 

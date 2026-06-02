@@ -2,6 +2,17 @@
 
 本项目是 Python 课程实验的 Flask 可运行骨架，前端使用原生 HTML/CSS/JavaScript，图表入口预留给 Plotly。当前分工为：成员 A 负责整体框架、前端界面、后端路由与接口调度；成员 B 负责数据读取、数据导出以及缺失值、重复值、异常值等数据清洗；成员 C 负责图表可视化；成员 D 负责数据分析与机器学习部分。
 
+## 环境要求
+
+- Python：建议 3.10 或以上版本。
+- 包管理：使用 `pip` 安装 `requirements.txt`。
+- 后端依赖：`Flask`。
+- 数据库存储：SQLite 使用 Python 标准库 `sqlite3`，不需要单独安装数据库。
+- 图表预览：前端页面通过 CDN 加载 Plotly.js，访问图表页时需要能访问 `https://cdn.plot.ly/`。
+- 可视化扩展：`requirements.txt` 中保留 `plotly`，供成员 C 后续在 Python 侧生成 Plotly figure 使用。
+- 数据读取扩展：成员 B 如果使用 Pandas 读取 CSV/Excel，需要补充 `pandas`；读取 `.xlsx` 通常还需要 `openpyxl`。
+- 运行参数：`PORT` 可修改端口，`FLASK_DEBUG=0` 可关闭调试模式。
+
 ## 本地运行
 
 ```powershell
@@ -47,16 +58,21 @@ python run.py
 - `message`：给用户看的提示
 - `data`：接口数据、摘要、状态或调试信息
 
-## 数据状态
+## 数据存储
 
-开发期使用 `app/utils/data_store.py` 保存单用户临时状态：
+当前使用 SQLite 保存单用户流程状态，存储逻辑在 `app/utils/data_store.py`：
+
+- 数据库文件：`instance/dataflow.sqlite3`
+- 数据表：`data_state`
+- 存储方式：通过 Python 标准库 `sqlite3` 写入，通过 `pickle` 保存 DataFrame、分析结果等 Python 对象
+- 依赖情况：SQLite 使用 Python 标准库，不需要额外安装数据库依赖
 
 - `raw_dataset`：上传后的原始数据
 - `cleaned_dataset`：清洗后的数据
 - `analysis_result`：聚类分析结果
 - `metadata`：上传、清洗、分析摘要
 
-后续如需多用户或持久化，应替换为 SQLite、本地文件缓存或会话隔离的数据层。
+当前是课程实验的本地可信环境方案。若后续需要多用户或线上部署，应在 SQLite 表中增加用户/任务标识，或改为文件存储与数据库元数据结合的方案。
 
 ## 接口说明
 
@@ -97,7 +113,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/upload -F "file=@data.csv"
 上传实现约定：
 
 1. `file` 是 Flask/Werkzeug 的 `FileStorage` 对象，可通过 `file.filename` 读取文件名，通过 `file.stream` 或 `file.read()` 读取内容。
-2. `dataset` 会被保存为 `raw_dataset`，后续会原样传给 `clean_dataframe(dataframe, rules)`。
+2. `dataset` 会通过 SQLite 保存为 `raw_dataset`，后续会原样传给 `clean_dataframe(dataframe, rules)`。
 3. `metadata` 建议至少包含 `filename`、`rows`、`columns`，前端和响应详情会直接展示这些信息。
 4. 不支持的格式、空文件、解析失败统一 `raise ValueError("错误说明")`，路由会返回 `INVALID_FILE`。
 5. 如果成员 B 使用 Pandas 读取 CSV/Excel，需要在 `requirements.txt` 补充对应依赖，例如 `pandas`；读取 `.xlsx` 通常还需要 `openpyxl`。
@@ -165,7 +181,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/clean -H "Content-Type: application/j
 1. `dataframe` 来自上传接口返回的 `dataset`。
 2. `rules` 对应前端三个勾选项：`drop_missing`、`drop_duplicates`、`handle_outliers`。
 3. 清洗失败或规则不合法统一 `raise ValueError("错误说明")`，路由会返回 `INVALID_CLEAN_RULES`。
-4. 返回的 `dataset` 会保存为 `cleaned_dataset`，后续传给分析和可视化流程。
+4. 返回的 `dataset` 会通过 SQLite 保存为 `cleaned_dataset`，后续传给分析和可视化流程。
 
 ### 3. K-Means 分析
 
@@ -213,7 +229,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/analyze -H "Content-Type: application
 2. `method` 当前只支持 `kmeans`，其他值会返回 `INVALID_ANALYZE_METHOD`。
 3. `k` 已在路由中转为整数，并确保不小于 2。
 4. 参数不合法或分析失败统一 `raise ValueError("错误说明")`，路由会返回 `INVALID_ANALYZE_PARAMS`。
-5. 返回的 `result` 会保存为 `analysis_result`，后续可供可视化和导出使用。
+5. 返回的 `result` 会通过 SQLite 保存为 `analysis_result`，后续可供可视化和导出使用。
 
 ### 4. 生成图表
 
@@ -294,7 +310,7 @@ curl.exe "http://127.0.0.1:5000/api/export?type=cleaned"
 导出实现约定：
 
 1. `export_type` 只会是 `cleaned` 或 `result`。
-2. `state` 来自 `app/utils/data_store.py`，包含 `raw_dataset`、`cleaned_dataset`、`analysis_result` 和 `metadata`。
+2. `state` 来自 `app/utils/data_store.py`，其数据由 SQLite 读取，包含 `raw_dataset`、`cleaned_dataset`、`analysis_result` 和 `metadata`。
 3. 当前路由按统一 JSON 响应返回导出结果，`export_dataset` 可返回 `{"filename": "...", "path": "..."}` 或 `{"content": "..."}` 等 dict。
 4. 导出失败统一 `raise ValueError("错误说明")`，路由会返回 `INVALID_EXPORT`。
 

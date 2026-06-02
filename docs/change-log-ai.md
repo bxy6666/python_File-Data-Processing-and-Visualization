@@ -23,3 +23,5 @@
 - 按最新成员分工统一文档与占位提示：成员A负责框架、前端、后端路由与接口调度；成员B负责数据读取、导出与清洗；成员C负责可视化；成员D负责数据分析与机器学习。
 - 补充成员接入契约：上传、清洗、分析、可视化、导出的返回值和异常约定；分析接口增加 `method=kmeans` 校验。
 - 明确成员C可视化函数 `create_chart_response(...)` 返回 `(payload, http_status)`，其中 `payload.data.figure` 需兼容 Plotly.js。
+- 将数据状态存储从内存字典改为 SQLite，数据库文件为 `instance/dataflow.sqlite3`；路由仍通过 `data_store.py` 的统一函数读写状态。
+- 补充运行环境要求，说明 Python、Flask、SQLite、Plotly.js CDN、可选数据处理依赖和运行环境变量；删除仓库中冗余的 `__pycache__` 缓存文件。
