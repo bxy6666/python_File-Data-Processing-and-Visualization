@@ -3,7 +3,7 @@ import unittest
 
 import pandas as pd
 
-from app.utils.clean_utils import clean_dataframe
+from app.utils.clean_utils import analyze_cleaning_needs, clean_dataframe
 
 
 class CleanDataFrameTests(unittest.TestCase):
@@ -42,6 +42,19 @@ class CleanDataFrameTests(unittest.TestCase):
         self.assertEqual(summary["removed_rows"], 3)
         self.assertEqual(summary["filled_values"], 0)
         self.assertEqual(summary["rules"]["drop_missing"], True)
+
+    def test_analyze_cleaning_needs_reports_recommended_rules(self):
+        profile = analyze_cleaning_needs(self.make_dirty_dataframe())
+
+        self.assertEqual(profile["rows"], 6)
+        self.assertEqual(profile["missing_values"], 1)
+        self.assertEqual(profile["missing_by_column"], {"sales": 1})
+        self.assertEqual(profile["duplicate_rows"], 1)
+        self.assertEqual(profile["outlier_rows"], 1)
+        self.assertIn("sales", profile["outlier_fields"])
+        self.assertEqual(profile["recommended_rules"]["drop_missing"], True)
+        self.assertEqual(profile["recommended_rules"]["drop_duplicates"], True)
+        self.assertEqual(profile["recommended_rules"]["handle_outliers"], True)
 
     def test_clean_dataframe_can_keep_missing_rows_when_rule_is_false(self):
         result = clean_dataframe(

@@ -76,6 +76,70 @@ def _remove_outliers_iqr(dataframe):
     return dataframe.loc[~outlier_mask].copy(), removed_rows, fields
 
 
+def analyze_cleaning_needs(dataframe):
+    checked_dataframe = _ensure_dataframe(dataframe)
+
+    missing_by_column = {
+        str(column): int(count)
+        for column, count in checked_dataframe.isna().sum().items()
+        if int(count) > 0
+    }
+    missing_values = int(sum(missing_by_column.values()))
+    duplicate_rows = int(checked_dataframe.duplicated().sum())
+
+    numeric_columns = list(checked_dataframe.select_dtypes(include=["number"]).columns)
+    outlier_mask = None
+    outlier_details = []
+    for column in numeric_columns:
+        series = checked_dataframe[column].dropna()
+        if series.empty:
+            continue
+
+        q1 = series.quantile(0.25)
+        q3 = series.quantile(0.75)
+        iqr = q3 - q1
+        if iqr == 0:
+            continue
+
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        column_mask = (checked_dataframe[column] < lower) | (checked_dataframe[column] > upper)
+        outlier_count = int(column_mask.sum())
+        if outlier_count == 0:
+            continue
+
+        outlier_details.append(
+            {
+                "column": str(column),
+                "count": outlier_count,
+                "lower_bound": float(lower),
+                "upper_bound": float(upper),
+            }
+        )
+        outlier_mask = column_mask if outlier_mask is None else (outlier_mask | column_mask)
+
+    outlier_rows = int(outlier_mask.sum()) if outlier_mask is not None else 0
+    recommended_rules = {
+        "drop_missing": missing_values > 0,
+        "drop_duplicates": duplicate_rows > 0,
+        "handle_outliers": outlier_rows > 0,
+    }
+
+    return {
+        "rows": int(len(checked_dataframe)),
+        "columns": [str(column) for column in checked_dataframe.columns],
+        "column_count": int(len(checked_dataframe.columns)),
+        "missing_values": missing_values,
+        "missing_by_column": missing_by_column,
+        "duplicate_rows": duplicate_rows,
+        "numeric_columns": [str(column) for column in numeric_columns],
+        "outlier_rows": outlier_rows,
+        "outlier_fields": [item["column"] for item in outlier_details],
+        "outliers": outlier_details,
+        "recommended_rules": recommended_rules,
+    }
+
+
 def clean_dataframe(dataframe, rules):
     """按规则清洗数据。
 

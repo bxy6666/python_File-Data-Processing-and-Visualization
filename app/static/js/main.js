@@ -5,6 +5,9 @@ const fileMetaEl = document.querySelector("#file-meta");
 const selectedUploadPanel = document.querySelector("#selected-upload-panel");
 const datasetListEl = document.querySelector("#dataset-list");
 const processedListEl = document.querySelector("#processed-list");
+const datasetSearchInput = document.querySelector("#dataset-search");
+const datasetStatusFilter = document.querySelector("#dataset-status-filter");
+const datasetPreviewPanel = document.querySelector("#dataset-preview-panel");
 const currentDatasetPanel = document.querySelector("#current-dataset-panel");
 const workflowStageEls = document.querySelectorAll("[data-flow-stage]");
 const clusterDistributionEl = document.querySelector("#cluster-distribution");
@@ -34,6 +37,8 @@ const supportedFilePattern = /\.(csv|xls|xlsx)$/i;
 let selectedUploadFiles = [];
 let currentPredictExampleRows = [];
 let currentClusterAxisRanges = {};
+let latestDatasets = [];
+let latestActiveDataset = null;
 
 const stepStateLabels = {
   idle: "待调用",
@@ -334,6 +339,42 @@ function addBadge(container, text, variant = "") {
 function datasetMetaText(dataset) {
   const metadata = dataset.metadata || {};
   return `${formatNumber(metadata.rows)} 行 · ${formatNumber(metadata.column_count)} 列 · 缺失 ${formatNumber(metadata.missing_values)}`;
+}
+
+function datasetStatusKey(dataset) {
+  const status = dataset.status || {};
+  if (status.has_analysis_result) {
+    return "analyzed";
+  }
+  if (status.has_cleaned_dataset) {
+    return "cleaned";
+  }
+  return "raw";
+}
+
+function datasetMatchesFilters(dataset) {
+  const keyword = (datasetSearchInput?.value || "").trim().toLowerCase();
+  const statusFilter = datasetStatusFilter?.value || "all";
+  const metadata = dataset.metadata || {};
+  const searchableText = [
+    dataset.filename,
+    metadata.format,
+    ...(metadata.columns || []),
+  ].join(" ").toLowerCase();
+
+  if (keyword && !searchableText.includes(keyword)) {
+    return false;
+  }
+
+  if (statusFilter === "all") {
+    return true;
+  }
+
+  return datasetStatusKey(dataset) === statusFilter;
+}
+
+function filteredDatasets() {
+  return latestDatasets.filter(datasetMatchesFilters);
 }
 
 function appendDatasetBadges(container, dataset) {
@@ -935,8 +976,159 @@ function renderWorkflowProgress(activeDataset) {
   updatePredictGuidance(activeDataset);
 }
 
+function renderDatasetViews() {
+  const datasets = filteredDatasets();
+  const processedDatasets = datasets.filter(
+    (dataset) => dataset.status?.has_cleaned_dataset || dataset.status?.has_analysis_result
+  );
+
+  renderDatasetList(datasetListEl, datasets, "暂无上传文件。");
+  renderDatasetList(processedListEl, processedDatasets, "暂无处理结果。", true);
+  renderCurrentDatasetPanel(latestActiveDataset);
+  renderWorkflowProgress(latestActiveDataset);
+}
+
+function renderDatasetPreviewEmpty(message = "暂无可预览数据。") {
+  if (!datasetPreviewPanel) {
+    return;
+  }
+
+  datasetPreviewPanel.innerHTML = "";
+  const heading = document.createElement("div");
+  heading.className = "section-heading compact";
+  heading.appendChild(createText("p", "eyebrow", "Preview"));
+  heading.appendChild(createText("h2", "", "当前文件预览"));
+  heading.appendChild(createText("p", "", "前 10 行数据与清洗建议。"));
+  datasetPreviewPanel.appendChild(heading);
+  datasetPreviewPanel.appendChild(createText("div", "empty-state compact", message));
+}
+
+function renderDatasetPreviewLoading(dataset) {
+  renderDatasetPreviewEmpty(`${dataset?.filename || "当前文件"} 正在加载预览...`);
+}
+
+function appendPreviewMetric(container, label, value) {
+  const item = document.createElement("div");
+  item.className = "preview-metric";
+  item.appendChild(createText("span", "", label));
+  item.appendChild(createText("strong", "", formatMetric(value)));
+  container.appendChild(item);
+}
+
+function ruleLabel(rule) {
+  return {
+    drop_missing: "删除缺失行",
+    drop_duplicates: "删除重复行",
+    handle_outliers: "处理异常值",
+  }[rule] || rule;
+}
+
+function appendPreviewSuggestions(container, profile) {
+  const suggestions = document.createElement("div");
+  suggestions.className = "preview-suggestions";
+  suggestions.appendChild(createText("h3", "", "清洗建议"));
+
+  const ruleEntries = Object.entries(profile?.recommended_rules || {}).filter(([, enabled]) => enabled);
+  if (!ruleEntries.length) {
+    suggestions.appendChild(createText("p", "", "当前数据未发现明显缺失、重复或 IQR 异常值。"));
+    container.appendChild(suggestions);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "dataset-badges inline";
+  ruleEntries.forEach(([rule]) => {
+    addBadge(list, ruleLabel(rule), "success");
+  });
+  suggestions.appendChild(list);
+  container.appendChild(suggestions);
+}
+
+function renderDatasetPreview(preview, profile, dataset) {
+  if (!datasetPreviewPanel) {
+    return;
+  }
+
+  datasetPreviewPanel.innerHTML = "";
+  const previewTypeText = preview.type === "cleaned" ? "清洗后数据" : "原始数据";
+
+  const heading = document.createElement("div");
+  heading.className = "section-heading compact";
+  heading.appendChild(createText("p", "eyebrow", "Preview"));
+  heading.appendChild(createText("h2", "", dataset?.filename || "当前文件预览"));
+  heading.appendChild(createText("p", "", `${previewTypeText} · ${formatNumber(preview.total_rows)} 行 · ${formatNumber(preview.total_columns)} 列`));
+  datasetPreviewPanel.appendChild(heading);
+
+  const metrics = document.createElement("div");
+  metrics.className = "preview-metrics";
+  appendPreviewMetric(metrics, "缺失值", profile?.missing_values ?? "-");
+  appendPreviewMetric(metrics, "重复行", profile?.duplicate_rows ?? "-");
+  appendPreviewMetric(metrics, "异常行", profile?.outlier_rows ?? "-");
+  datasetPreviewPanel.appendChild(metrics);
+
+  appendPreviewSuggestions(datasetPreviewPanel, profile);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "preview-table-wrap";
+  const table = document.createElement("table");
+  table.className = "preview-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  preview.columns.forEach((column) => {
+    headRow.appendChild(createText("th", "", column));
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  preview.rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    preview.columns.forEach((column) => {
+      const value = row[column];
+      tr.appendChild(createText("td", "", value === null || value === undefined || value === "" ? "-" : String(value)));
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  datasetPreviewPanel.appendChild(tableWrap);
+}
+
+async function loadDatasetPreview(dataset) {
+  if (!datasetPreviewPanel) {
+    return;
+  }
+
+  if (!dataset) {
+    renderDatasetPreviewEmpty();
+    return;
+  }
+
+  const previewType = dataset.status?.has_cleaned_dataset ? "cleaned" : "raw";
+  renderDatasetPreviewLoading(dataset);
+
+  const previewResult = await requestJson(
+    `/api/datasets/${encodeURIComponent(dataset.id)}/preview?type=${previewType}&limit=10`,
+    {},
+    { silent: true }
+  );
+  if (!previewResult.response.ok) {
+    renderDatasetPreviewEmpty(previewResult.data.message || "预览数据暂不可用。");
+    return;
+  }
+
+  const profileResult = await requestJson(
+    `/api/datasets/${encodeURIComponent(dataset.id)}/clean-profile`,
+    {},
+    { silent: true }
+  );
+  const profile = profileResult.response.ok ? profileResult.data.data?.profile : null;
+  renderDatasetPreview(previewResult.data.data?.preview, profile, dataset);
+}
+
 async function loadDatasets() {
-  if (!datasetListEl && !processedListEl && !currentDatasetPanel) {
+  if (!datasetListEl && !processedListEl && !currentDatasetPanel && !datasetPreviewPanel) {
     return;
   }
 
@@ -946,15 +1138,18 @@ async function loadDatasets() {
   }
 
   const payload = data.data || {};
-  const datasets = payload.datasets || [];
+  latestDatasets = payload.datasets || [];
+  latestActiveDataset = payload.active_dataset || null;
+  const datasets = filteredDatasets();
   const processedDatasets = datasets.filter(
     (dataset) => dataset.status?.has_cleaned_dataset || dataset.status?.has_analysis_result
   );
 
   renderDatasetList(datasetListEl, datasets, "暂无上传文件。");
   renderDatasetList(processedListEl, processedDatasets, "暂无处理结果。", true);
-  renderCurrentDatasetPanel(payload.active_dataset);
-  renderWorkflowProgress(payload.active_dataset);
+  renderCurrentDatasetPanel(latestActiveDataset);
+  renderWorkflowProgress(latestActiveDataset);
+  await loadDatasetPreview(latestActiveDataset);
 }
 
 function triggerDownload(exportData) {
@@ -1451,6 +1646,14 @@ if (visualForm) {
 
 if (chartEl) {
   chartEl.textContent = "上传并处理数据后，图表会显示在这里。";
+}
+
+if (datasetSearchInput) {
+  datasetSearchInput.addEventListener("input", renderDatasetViews);
+}
+
+if (datasetStatusFilter) {
+  datasetStatusFilter.addEventListener("change", renderDatasetViews);
 }
 
 renderSelectedUploadPanel();

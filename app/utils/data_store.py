@@ -11,6 +11,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+import pandas as pd
+
 
 DATABASE_PATH = Path(__file__).resolve().parents[2] / "instance" / "dataflow.sqlite3"
 DATABASE_LABEL = "instance/dataflow.sqlite3"
@@ -339,6 +341,63 @@ def set_analysis_result(result, summary=None):
 
 def get_analysis_result(dataset_id=None):
     return _get_dataset_value("analysis_result", dataset_id)
+
+
+def _json_safe_value(value):
+    if value is None:
+        return None
+
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    if hasattr(value, "item"):
+        value = value.item()
+
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+
+    return value
+
+
+def get_dataset_preview(dataset_id=None, dataset_type="raw", limit=10):
+    if dataset_type not in {"raw", "cleaned"}:
+        raise ValueError("type 仅支持 raw 或 cleaned")
+
+    try:
+        preview_limit = int(limit)
+    except (TypeError, ValueError) as error:
+        raise ValueError("limit 必须是数字") from error
+
+    if preview_limit < 1:
+        raise ValueError("limit 不能小于 1")
+    preview_limit = min(preview_limit, 50)
+
+    dataframe = get_raw_dataset(dataset_id) if dataset_type == "raw" else get_cleaned_dataset(dataset_id)
+    if dataframe is None:
+        return None
+
+    columns = [str(column) for column in dataframe.columns]
+    rows = []
+    for row_values in dataframe.head(preview_limit).itertuples(index=False, name=None):
+        rows.append(
+            {
+                column: _json_safe_value(row_values[index])
+                for index, column in enumerate(columns)
+            }
+        )
+
+    return {
+        "dataset_id": _resolve_dataset_id(dataset_id),
+        "type": dataset_type,
+        "limit": preview_limit,
+        "columns": columns,
+        "rows": rows,
+        "total_rows": int(len(dataframe)),
+        "total_columns": int(len(dataframe.columns)),
+    }
 
 
 def get_export_state(dataset_id=None):

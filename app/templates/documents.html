@@ -23,6 +23,22 @@
     </div>
   </section>
 
+  <section class="panel-card dataset-toolbar" aria-label="数据集筛选">
+    <label>
+      文件检索
+      <input id="dataset-search" type="search" placeholder="按文件名或字段搜索">
+    </label>
+    <label>
+      状态筛选
+      <select id="dataset-status-filter">
+        <option value="all">全部文件</option>
+        <option value="raw">待处理</option>
+        <option value="cleaned">已清洗</option>
+        <option value="analyzed">已分析</option>
+      </select>
+    </label>
+  </section>
+
   <section class="dataset-board">
     <section class="panel-card">
       <div class="section-heading compact">
@@ -45,6 +61,15 @@
         <div class="empty-state">暂无处理结果。</div>
       </div>
     </section>
+  </section>
+
+  <section id="dataset-preview-panel" class="panel-card dataset-preview-panel" aria-live="polite">
+    <div class="section-heading compact">
+      <p class="eyebrow">Preview</p>
+      <h2>当前文件预览</h2>
+      <p>选择历史文件后，这里会显示前 10 行数据和清洗建议。</p>
+    </div>
+    <div class="empty-state compact">暂无可预览数据。</div>
   </section>
 {% endblock %}
 

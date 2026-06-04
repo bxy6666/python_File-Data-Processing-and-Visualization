@@ -1,11 +1,12 @@
 from flask import Blueprint, redirect, render_template, request, url_for
 
 from .utils.chart_utils import create_chart_response
-from .utils.clean_utils import clean_dataframe
+from .utils.clean_utils import analyze_cleaning_needs, clean_dataframe
 from .utils.data_store import (
     activate_dataset,
     get_analysis_result,
     get_cleaned_dataset,
+    get_dataset_preview,
     get_dataset_summary,
     get_export_state,
     get_raw_dataset,
@@ -85,6 +86,62 @@ def datasets():
             "active_dataset": summary.get("active_dataset"),
             "state": summary,
         },
+    )
+
+
+@bp.get("/api/datasets/<int:dataset_id>/preview")
+def dataset_preview(dataset_id):
+    if get_dataset_summary(dataset_id) is None:
+        return error_response("DATASET_NOT_FOUND", "数据集不存在", http_status=404)
+
+    preview_type = request.args.get("type", "raw").strip().lower()
+    limit = request.args.get("limit", 10)
+
+    try:
+        preview = get_dataset_preview(dataset_id, preview_type, limit)
+    except ValueError as error:
+        code = "INVALID_PREVIEW_TYPE" if "type" in str(error) else "INVALID_PREVIEW_LIMIT"
+        return error_response(code, str(error), http_status=400)
+
+    if preview is None:
+        return error_response(
+            "DATA_NOT_READY",
+            "该数据集暂未生成对应预览数据",
+            {"required": preview_type, "state": state_summary()},
+            409,
+        )
+
+    return success_response(
+        "DATASET_PREVIEW_OK",
+        "数据预览已获取",
+        {"preview": preview, "dataset": get_dataset_summary(dataset_id)},
+    )
+
+
+@bp.get("/api/datasets/<int:dataset_id>/clean-profile")
+def dataset_clean_profile(dataset_id):
+    dataset = get_dataset_summary(dataset_id)
+    if dataset is None:
+        return error_response("DATASET_NOT_FOUND", "数据集不存在", http_status=404)
+
+    dataframe = get_raw_dataset(dataset_id)
+    if dataframe is None:
+        return error_response(
+            "DATA_NOT_READY",
+            "请先上传数据",
+            {"required": "raw_dataset", "state": state_summary()},
+            409,
+        )
+
+    try:
+        profile = analyze_cleaning_needs(dataframe)
+    except ValueError as error:
+        return error_response("INVALID_DATASET", str(error), http_status=400)
+
+    return success_response(
+        "CLEAN_PROFILE_OK",
+        "清洗建议已生成",
+        {"profile": profile, "dataset": dataset},
     )
 
 
