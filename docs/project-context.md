@@ -5,12 +5,12 @@
 - 项目名称：python_File-Data-Processing-and-Visualization
 - 项目根目录：E:\PythonProject\PXY666\python_File-Data-Processing-and-Visualization
 - 项目类型：混合型项目（Flask 后端 + 原生 HTML/CSS/JavaScript 前端）
-- 当前阶段：项目骨架初始化完成，可进入成员功能接入
+- 当前阶段：上传、清洗、分析、导出与文件历史联通已完成；图表生成功能待成员C接入
 - 主要目标：完成交互式数据分析系统的上传、清洗、分析、可视化、导出流程
 - 当前前端品牌：DataFlow
-- 当前前端形态：多页面流程向导式工作台，右侧响应详情常显用于开发期联调
+- 当前前端形态：多页面流程向导式工作台，数据管理页使用 DocAI 风格紧凑文件面板，操作反馈改为页面内状态提示，不再展示调试用响应窗口
 - 当前 API 格式：统一返回 `status`、`code`、`message`、`data`
-- 当前数据状态：使用 `app/utils/data_store.py` 基于 SQLite 保存单用户流程状态，数据库文件为 `instance/dataflow.sqlite3`
+- 当前数据状态：使用 `app/utils/data_store.py` 基于 SQLite 保存单用户上传历史和当前处理对象，数据库文件为 `instance/dataflow.sqlite3`
 - 当前成员分工：成员A负责框架、前端、后端路由与接口调度；成员B负责数据读取、导出与清洗；成员C负责可视化；成员D负责数据分析与机器学习
 - 项目级规则：存在，优先遵守 `AGENTS.md`
 
@@ -18,9 +18,9 @@
 
 - Web 后端：Flask
 - 数据存储：SQLite（Python 标准库 `sqlite3`，运行时数据库文件位于 `instance/dataflow.sqlite3`）
-- 数据读取、导出与清洗：后续由成员B接入 Pandas、NumPy
+- 数据读取、导出与清洗：已由成员B接口落地，使用 Pandas 读取 CSV/Excel、清洗并导出结果
 - 可视化：后续由成员C接入 Plotly / Plotly.js 图表生成
-- 机器学习：后续由成员D接入 scikit-learn K-Means
+- 机器学习：已由成员D接口落地，使用 scikit-learn K-Means
 - 前端：HTML、CSS、JavaScript、Fetch API
 - 包管理：pip + requirements.txt
 - 不使用：React、Vue、Django、MySQL、shadcn/ui、大型 UI 框架
@@ -46,6 +46,7 @@
 - `app/templates/visualization.html`：Plotly 图表分析页
 - `app/static/css/style.css`：多页面工作台样式
 - `app/static/js/main.js`：各页面 Fetch 与 Plotly 入口
+- `src/components/DataFileUploadPanel.vue`：DocAI 风格文件上传面板参考组件，不接入当前 Flask 运行时
 - `app/utils/`：成员B/C/D功能接入预留工具模块，以及成员A维护的响应与 SQLite 状态模块
 - `docs/`：项目上下文与 AI 修改记录
 
@@ -60,7 +61,10 @@
 - `POST /api/clean`：数据清洗，调用成员B的 `clean_utils.clean_dataframe(dataframe, rules)`；需要已有 `raw_dataset`
 - `POST /api/analyze`：K-Means 分析，`method` 仅支持 `kmeans`，调用成员D的 `ml_utils.run_kmeans(dataframe, k)`；需要已有 `cleaned_dataset`
 - `GET /api/visualize?chart=<type>`：图表入口，前端只提交图表类型；由成员C补充 Plotly `figure` 与图表说明
-- `GET /api/export?type=<cleaned|result>`：导出入口，调用成员B的 `file_utils.export_dataset(export_type, state)`
+- `GET /api/datasets`：返回上传历史、当前处理文件和处理状态
+- `POST /api/datasets/<id>/activate`：切换当前处理文件
+- `DELETE /api/datasets/<id>`：删除指定上传历史及其处理结果
+- `GET /api/export?type=<cleaned|result>&dataset_id=<id>`：导出入口，调用成员B的 `file_utils.export_dataset(export_type, state)`；`dataset_id` 可省略，默认导出当前处理对象
 
 ## 5. 验证建议
 

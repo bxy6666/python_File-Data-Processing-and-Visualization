@@ -9,57 +9,53 @@
 {% endblock %}
 
 {% block content %}
-  <div class="content-grid">
-    <section class="panel-card" data-step="visual" data-state="idle">
-      <div class="section-heading compact">
-        <p class="eyebrow">Chart Builder</p>
-        <h2>创建图表</h2>
-        <p>选择一种图表类型，数据准备完成后会显示预览和图表说明。</p>
-      </div>
-      <form id="visual-form" class="visual-form wide">
-        <input id="chart-type" name="chart" type="hidden" value="scatter">
-        <div class="chart-choice-grid" role="radiogroup" aria-label="图表类型">
-          <button class="chart-choice" type="button" data-chart-choice="bar" aria-pressed="false">
-            <span class="chart-icon chart-icon-bar"><i></i><i></i><i></i></span>
-            <strong>柱状图</strong>
-            <small>比较不同类别的数值</small>
-          </button>
-          <button class="chart-choice" type="button" data-chart-choice="line" aria-pressed="false">
-            <span class="chart-icon chart-icon-line"><i></i></span>
-            <strong>折线图</strong>
-            <small>观察连续变化趋势</small>
-          </button>
-          <button class="chart-choice is-selected" type="button" data-chart-choice="scatter" aria-pressed="true">
-            <span class="chart-icon chart-icon-scatter"><i></i><i></i><i></i></span>
-            <strong>散点图</strong>
-            <small>查看两个指标的关系</small>
-          </button>
-          <button class="chart-choice" type="button" data-chart-choice="box" aria-pressed="false">
-            <span class="chart-icon chart-icon-box"><i></i></span>
-            <strong>箱线图</strong>
-            <small>查看分布和异常点</small>
-          </button>
-        </div>
-        <button class="chart-submit" type="submit">创建图表</button>
-      </form>
-      <div id="chart" class="chart-placeholder" aria-live="polite"></div>
-      <section class="chart-summary" aria-labelledby="chart-summary-title">
-        <h3 id="chart-summary-title">图表说明</h3>
-        <p id="chart-description">上传并处理数据后，这里会展示系统生成的图表解读。</p>
-      </section>
-    </section>
+  <section id="current-dataset-panel" class="state-banner panel-card current-file-panel" data-context="visualization" aria-live="polite">
+    <div class="current-file-copy">
+      <p class="eyebrow">Selected File</p>
+      <h2>正在读取文件状态</h2>
+      <p>系统会显示当前已选文件。</p>
+    </div>
+    <a class="continue-add-button current-add-link" href="{{ url_for('main.documents') }}">添加新文件</a>
+  </section>
 
-    <aside class="side-panel">
-      <section class="panel-card">
-        <div class="section-heading compact">
-          <p class="eyebrow">Response</p>
-          <h2>响应详情</h2>
-        </div>
-        <div id="message" class="message" aria-live="polite">等待操作。</div>
-        <pre id="response-output">{}</pre>
-      </section>
-    </aside>
-  </div>
+  <section class="panel-card visual-workspace" data-step="visual" data-state="idle">
+    <div class="section-heading compact">
+      <p class="eyebrow">Chart Builder</p>
+      <h2>创建图表</h2>
+      <p>选择一种图表类型，数据准备完成后会显示预览和图表说明。</p>
+    </div>
+    <form id="visual-form" class="visual-form wide">
+      <input id="chart-type" name="chart" type="hidden" value="scatter">
+      <div class="chart-choice-grid" role="radiogroup" aria-label="图表类型">
+        <button class="chart-choice" type="button" data-chart-choice="bar" aria-pressed="false">
+          <span class="chart-icon chart-icon-bar"><i></i><i></i><i></i></span>
+          <strong>柱状图</strong>
+          <small>比较不同类别的数值</small>
+        </button>
+        <button class="chart-choice" type="button" data-chart-choice="line" aria-pressed="false">
+          <span class="chart-icon chart-icon-line"><i></i></span>
+          <strong>折线图</strong>
+          <small>观察连续变化趋势</small>
+        </button>
+        <button class="chart-choice is-selected" type="button" data-chart-choice="scatter" aria-pressed="true">
+          <span class="chart-icon chart-icon-scatter"><i></i><i></i><i></i></span>
+          <strong>散点图</strong>
+          <small>查看两个指标的关系</small>
+        </button>
+        <button class="chart-choice" type="button" data-chart-choice="box" aria-pressed="false">
+          <span class="chart-icon chart-icon-box"><i></i></span>
+          <strong>箱线图</strong>
+          <small>查看分布和异常点</small>
+        </button>
+      </div>
+      <button class="chart-submit" type="submit">创建图表</button>
+    </form>
+    <div id="chart" class="chart-placeholder" aria-live="polite"></div>
+    <section class="chart-summary" aria-labelledby="chart-summary-title">
+      <h3 id="chart-summary-title">图表说明</h3>
+      <p id="chart-description">上传并处理数据后，这里会展示系统生成的图表解读。</p>
+    </section>
+  </section>
 {% endblock %}
 
 {% block scripts %}

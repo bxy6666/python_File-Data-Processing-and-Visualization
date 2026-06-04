@@ -1,6 +1,6 @@
 # DataFlow 交互式数据分析系统
 
-本项目是 Python 课程实验的 Flask 可运行骨架，前端使用原生 HTML/CSS/JavaScript，图表入口预留给 Plotly。当前分工为：成员 A 负责整体框架、前端界面、后端路由与接口调度；成员 B 负责数据读取、数据导出以及缺失值、重复值、异常值等数据清洗；成员 C 负责图表可视化；成员 D 负责数据分析与机器学习部分。
+本项目是 Python 课程实验的 Flask 可运行骨架，前端使用原生 HTML/CSS/JavaScript，图表入口预留给 Plotly。当前分工为：成员 A 负责整体框架、前端界面、后端路由与接口调度，并负责数据管理页文件展示、上传交互、当前文件跨页面联通与页面内状态提示；成员 B 负责数据读取、数据导出以及缺失值、重复值、异常值等数据清洗，并负责上传历史、当前处理对象、处理后结果归档与删除联动的数据侧管理；成员 C 负责图表可视化；成员 D 负责数据分析与机器学习部分。
 
 ## 环境要求
 
@@ -63,10 +63,12 @@ python run.py
 当前使用 SQLite 保存单用户流程状态，存储逻辑在 `app/utils/data_store.py`：
 
 - 数据库文件：`instance/dataflow.sqlite3`
-- 数据表：`data_state`
+- 数据表：`data_state`、`dataset_runs`
 - 存储方式：通过 Python 标准库 `sqlite3` 写入，通过 `pickle` 保存 DataFrame、分析结果等 Python 对象
 - 依赖情况：SQLite 使用 Python 标准库，不需要额外安装数据库依赖
 
+- `dataset_runs`：保存每次上传的文件、清洗结果和分析结果
+- `active_dataset_id`：记录当前正在处理的数据集
 - `raw_dataset`：上传后的原始数据
 - `cleaned_dataset`：清洗后的数据
 - `analysis_result`：聚类分析结果
@@ -74,7 +76,51 @@ python run.py
 
 当前是课程实验的本地可信环境方案。若后续需要多用户或线上部署，应在 SQLite 表中增加用户/任务标识，或改为文件存储与数据库元数据结合的方案。
 
+## 数据管理文件面板
+
+数据管理页采用 DocAI 风格的紧凑文件列表：
+
+- 待上传文件先进入本地选择队列，支持点击选择、拖拽、多文件添加、重复文件过滤和清空队列。
+- 已上传文件和处理后文件按行展示文件名、格式、行列数、缺失值和处理状态，避免单个文件占用过大区域。
+- 上传文件区底部操作栏只提供“处理”“图表”“删除”；“处理”进入数据清洗与分析流程。
+- 处理后文件区专门展示已清洗或已分析后的结果文件，底部操作栏只提供“图表”“导出”“删除”。
+- 处理流程页和图表分析页只显示当前文件信息，以及“移除”“添加新文件”。
+- 职责边界：成员 A 负责文件面板展示、上传交互和页面跳转联通；成员 B 负责上传历史、当前处理对象、处理后结果归档和删除联动的数据侧管理。
+- `src/components/DataFileUploadPanel.vue` 是 Vue / Element Plus 参考组件，便于后续迁移时复用设计结构；当前 Flask 运行页面仍使用原生 HTML/CSS/JavaScript，不引入 Vue 运行依赖。
+
 ## 接口说明
+
+### 0. 数据集状态与历史
+
+`GET /api/datasets`
+
+用途：返回上传历史、当前处理文件、清洗状态和分析状态。
+
+PowerShell 示例：
+
+```powershell
+curl.exe http://127.0.0.1:5000/api/datasets
+```
+
+`POST /api/datasets/<id>/activate`
+
+用途：将某个历史上传文件切换为当前处理对象。
+
+PowerShell 示例：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:5000/api/datasets/1/activate
+```
+
+`DELETE /api/datasets/<id>`
+
+用途：删除某个历史上传文件及其清洗、分析结果。若删除的是当前处理文件，系统会自动切换到最近一条历史记录；若没有剩余记录，则清空当前处理状态。
+
+PowerShell 示例：
+
+```powershell
+curl.exe -X DELETE http://127.0.0.1:5000/api/datasets/1
+```
 
 ### 1. 上传数据
 
@@ -95,7 +141,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/upload -F "file=@data.csv"
 当前状态：
 
 - 路由已接入 `app/utils/file_utils.py`
-- 需要成员 B 实现 `read_uploaded_file(file)`
+- 已实现 `read_uploaded_file(file)`，支持 CSV、XLS、XLSX 读取和基础元数据统计
 
 成员 B 期望返回：
 
@@ -114,7 +160,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/upload -F "file=@data.csv"
 
 1. `file` 是 Flask/Werkzeug 的 `FileStorage` 对象，可通过 `file.filename` 读取文件名，通过 `file.stream` 或 `file.read()` 读取内容。
 2. `dataset` 会通过 SQLite 保存为 `raw_dataset`，后续会原样传给 `clean_dataframe(dataframe, rules)`。
-3. `metadata` 建议至少包含 `filename`、`rows`、`columns`，前端和响应详情会直接展示这些信息。
+3. `metadata` 建议至少包含 `filename`、`rows`、`columns`，前端文件列表和页面状态会直接展示这些信息。
 4. 不支持的格式、空文件、解析失败统一 `raise ValueError("错误说明")`，路由会返回 `INVALID_FILE`。
 5. 如果成员 B 使用 Pandas 读取 CSV/Excel，需要在 `requirements.txt` 补充对应依赖，例如 `pandas`；读取 `.xlsx` 通常还需要 `openpyxl`。
 
@@ -161,7 +207,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/clean -H "Content-Type: application/j
 当前状态：
 
 - 路由已接入 `app/utils/clean_utils.py`
-- 需要成员 B 实现 `clean_dataframe(dataframe, rules)`
+- 已实现 `clean_dataframe(dataframe, rules)`，支持缺失值、重复行和 IQR 异常值处理
 - 调用前必须已有 `raw_dataset`
 
 成员 B 期望返回：
@@ -207,7 +253,7 @@ curl.exe -X POST http://127.0.0.1:5000/api/analyze -H "Content-Type: application
 当前状态：
 
 - 路由已接入 `app/utils/ml_utils.py`
-- 需要成员 D 实现 `run_kmeans(dataframe, k)`
+- 已实现 `run_kmeans(dataframe, k)`
 - 调用前必须已有 `cleaned_dataset`
 
 成员 D 期望返回：
@@ -303,9 +349,10 @@ curl.exe "http://127.0.0.1:5000/api/export?type=cleaned"
 当前状态：
 
 - 路由已接入 `app/utils/file_utils.py`
-- 需要成员 B 实现 `export_dataset(export_type, state)`
+- 已实现 `export_dataset(export_type, state)`
 - `cleaned` 需要已有 `cleaned_dataset`
 - `result` 需要已有 `analysis_result`
+- 可选传入 `dataset_id` 导出指定历史记录；不传时导出当前处理对象
 
 导出实现约定：
 
@@ -316,15 +363,15 @@ curl.exe "http://127.0.0.1:5000/api/export?type=cleaned"
 
 ## 成员接入位置
 
-- 成员 A：整体框架、前端界面、后端路由与接口调度
+- 成员 A：整体框架、前端界面、后端路由与接口调度、文件面板展示、上传交互和跨页面状态联通
   - `run.py`
   - `app/__init__.py`
   - `app/routes.py`
   - `app/templates/`
   - `app/static/`
   - `app/utils/response_utils.py`
-  - `app/utils/data_store.py`
-- 成员 B：数据读取、导出与清洗
+- 成员 B：数据读取、导出、清洗、上传历史、当前处理对象、处理后结果归档和删除联动
+  - `app/utils/data_store.py`（上传历史、当前处理对象和处理后结果状态）
   - `app/utils/file_utils.py`
   - `read_uploaded_file(file)`
   - `export_dataset(export_type, state)`

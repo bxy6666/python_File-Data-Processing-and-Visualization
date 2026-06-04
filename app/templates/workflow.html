@@ -5,87 +5,182 @@
 {% block page_subtitle %}确认清洗规则和聚类数量，再导出处理后的结果。{% endblock %}
 
 {% block content %}
-  <section class="steps-header panel-card">
-    <div class="workflow-track">
-      <span>上传数据</span>
-      <i></i>
-      <span>数据清洗</span>
-      <i></i>
-      <span>K-Means 分析</span>
-      <i></i>
-      <span>结果导出</span>
+  <section id="current-dataset-panel" class="state-banner panel-card current-file-panel" data-context="workflow" aria-live="polite">
+    <div class="current-file-copy">
+      <p class="eyebrow">Selected File</p>
+      <h2>正在读取文件状态</h2>
+      <p>系统会显示当前已选文件。</p>
+    </div>
+    <a class="continue-add-button current-add-link" href="{{ url_for('main.documents') }}">添加新文件</a>
+  </section>
+
+  <section class="process-overview panel-card" aria-labelledby="process-overview-title">
+    <div class="section-heading compact">
+      <p class="eyebrow">Pipeline</p>
+      <h2 id="process-overview-title">数据处理进度</h2>
+      <p>按当前文件状态展示上传、清洗、分析和导出准备情况。</p>
+    </div>
+
+    <div class="process-pipeline" aria-label="数据处理进度">
+      <article class="process-stage" data-flow-stage="upload" data-state="pending">
+        <span class="process-stage-index">1</span>
+        <div class="process-stage-copy">
+          <strong>上传数据</strong>
+          <small data-flow-status>等待文件</small>
+          <span data-flow-meta>请选择 CSV 或 Excel 文件</span>
+        </div>
+      </article>
+
+      <article class="process-stage" data-flow-stage="clean" data-state="pending">
+        <span class="process-stage-index">2</span>
+        <div class="process-stage-copy">
+          <strong>数据清洗</strong>
+          <small data-flow-status>等待上传</small>
+          <span data-flow-meta>清理缺失、重复和异常值</span>
+        </div>
+      </article>
+
+      <article class="process-stage" data-flow-stage="analyze" data-state="pending">
+        <span class="process-stage-index">3</span>
+        <div class="process-stage-copy">
+          <strong>K-Means 分析</strong>
+          <small data-flow-status>等待清洗</small>
+          <span data-flow-meta>基于数值字段生成聚类</span>
+        </div>
+      </article>
+
+      <article class="process-stage" data-flow-stage="export" data-state="pending">
+        <span class="process-stage-index">4</span>
+        <div class="process-stage-copy">
+          <strong>结果导出</strong>
+          <small data-flow-status>等待结果</small>
+          <span data-flow-meta>导出清洗数据或分析结果</span>
+        </div>
+      </article>
+    </div>
+
+    <div class="process-insights" aria-label="处理结果摘要">
+      <section class="process-insight" aria-labelledby="clean-impact-title">
+        <div class="insight-heading">
+          <p class="eyebrow">Cleaning Impact</p>
+          <h3 id="clean-impact-title">清洗影响</h3>
+        </div>
+        <dl class="metric-grid">
+          <div>
+            <dt>原始行数</dt>
+            <dd id="metric-raw-rows">-</dd>
+          </div>
+          <div>
+            <dt>清洗后行数</dt>
+            <dd id="metric-clean-rows">-</dd>
+          </div>
+          <div>
+            <dt>移除行数</dt>
+            <dd id="metric-removed-rows">-</dd>
+          </div>
+          <div>
+            <dt>缺失值变化</dt>
+            <dd id="metric-missing-change">-</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="process-insight" aria-labelledby="analysis-impact-title">
+        <div class="insight-heading">
+          <p class="eyebrow">Analysis Result</p>
+          <h3 id="analysis-impact-title">聚类概览</h3>
+        </div>
+        <dl class="metric-grid">
+          <div>
+            <dt>K 值</dt>
+            <dd id="metric-k">-</dd>
+          </div>
+          <div>
+            <dt>参与行数</dt>
+            <dd id="metric-rows-used">-</dd>
+          </div>
+          <div>
+            <dt>分析字段</dt>
+            <dd id="metric-feature-count">-</dd>
+          </div>
+          <div>
+            <dt>惯性值</dt>
+            <dd id="metric-inertia">-</dd>
+          </div>
+        </dl>
+        <div id="cluster-distribution" class="cluster-distribution">
+          <p>完成分析后显示聚类分布。</p>
+        </div>
+      </section>
     </div>
   </section>
 
-  <div class="content-grid">
-    <section class="flow-panel">
-      <div class="steps">
-        <section class="step" data-step="clean" data-state="idle" aria-labelledby="clean-title">
-          <div class="step-head">
-            <div class="step-index">01</div>
-            <div>
-              <h3 id="clean-title">数据清洗</h3>
-              <p>选择需要执行的清洗操作，减少缺失、重复和异常数据带来的干扰。</p>
-            </div>
-            <span id="clean-state" class="step-state">待调用</span>
-          </div>
-          <div class="option-row">
-            <label><input id="drop-missing" type="checkbox" checked> 删除缺失值</label>
-            <label><input id="drop-duplicates" type="checkbox" checked> 删除重复行</label>
-            <label><input id="handle-outliers" type="checkbox"> 检测异常值</label>
-          </div>
-          <button id="clean-button" type="button">开始清洗</button>
-          <p class="step-hint" id="clean-hint">下一步：完成清洗后进入聚类分析。</p>
-        </section>
-
-        <section class="step" data-step="analyze" data-state="idle" aria-labelledby="analyze-title">
-          <div class="step-head">
-            <div class="step-index">02</div>
-            <div>
-              <h3 id="analyze-title">K-Means 分析</h3>
-              <p>设置聚类数量，系统会自动选择适合的数值字段进行分析。</p>
-            </div>
-            <span id="analyze-state" class="step-state">待调用</span>
-          </div>
-          <div class="field-grid">
-            <label>
-              k 值
-              <input id="cluster-count" type="number" min="2" max="6" value="3">
-            </label>
-          </div>
-          <button id="analyze-button" type="button">开始分析</button>
-          <p class="step-hint" id="analyze-hint">下一步：分析完成后创建图表。</p>
-        </section>
-
-        <section id="export-panel" class="step" data-step="export" data-state="idle" aria-labelledby="export-title">
-          <div class="step-head">
-            <div class="step-index">03</div>
-            <div>
-              <h3 id="export-title">结果导出</h3>
-              <p>根据需要导出清洗后的数据或分析结果。</p>
-            </div>
-            <span id="export-state" class="step-state">待调用</span>
-          </div>
-          <div class="button-row">
-            <button data-export-type="cleaned" type="button">导出清洗数据</button>
-            <button data-export-type="result" type="button">导出分析结果</button>
-          </div>
-          <p class="step-hint" id="export-hint">完成处理后，可下载对应结果文件。</p>
-        </section>
+  <section class="flow-panel workflow-control-panel" aria-labelledby="workflow-control-title">
+    <div class="workflow-control-head">
+      <div>
+        <p class="eyebrow">Run</p>
+        <h2 id="workflow-control-title">处理配置</h2>
+        <p>确认规则后点击一次开始，系统会自动完成清洗和 K-Means 分析。</p>
       </div>
-    </section>
+      <div class="process-run-actions">
+        <button id="process-button" class="process-run-button" type="button">开始处理</button>
+        <span id="process-state">执行顺序：数据清洗 -> K-Means 分析</span>
+      </div>
+    </div>
 
-    <aside class="side-panel">
-      <section class="panel-card">
-        <div class="section-heading compact">
-          <p class="eyebrow">Response</p>
-          <h2>响应详情</h2>
+    <div class="workflow-config-grid">
+      <section class="step config-step" data-step="clean" data-state="idle" aria-labelledby="clean-title">
+        <div class="step-head">
+          <div class="step-index">01</div>
+          <div>
+            <h3 id="clean-title">清洗规则</h3>
+            <p>先处理缺失值、重复行和异常值，为后续聚类准备稳定数据。</p>
+          </div>
+          <span id="clean-state" class="step-state">待调用</span>
         </div>
-        <div id="message" class="message" aria-live="polite">等待操作。</div>
-        <pre id="response-output">{}</pre>
+        <div class="option-row">
+          <label><input id="drop-missing" type="checkbox" checked> 删除缺失值</label>
+          <label><input id="drop-duplicates" type="checkbox" checked> 删除重复行</label>
+          <label><input id="handle-outliers" type="checkbox"> 检测异常值</label>
+        </div>
+        <p class="step-hint" id="clean-hint">点击“开始处理”后，系统会先执行数据清洗。</p>
       </section>
-    </aside>
-  </div>
+
+      <section class="step config-step" data-step="analyze" data-state="idle" aria-labelledby="analyze-title">
+        <div class="step-head">
+          <div class="step-index">02</div>
+          <div>
+            <h3 id="analyze-title">分析参数</h3>
+            <p>设置聚类数量，清洗成功后系统会自动选择数值字段进行分析。</p>
+          </div>
+          <span id="analyze-state" class="step-state">待调用</span>
+        </div>
+        <div class="field-grid">
+          <label>
+            k 值
+            <input id="cluster-count" type="number" min="2" max="6" value="3">
+          </label>
+        </div>
+        <p class="step-hint" id="analyze-hint">清洗成功后会自动进入 K-Means 分析。</p>
+      </section>
+    </div>
+
+    <section id="export-panel" class="step export-step" data-step="export" data-state="idle" aria-labelledby="export-title">
+      <div class="step-head">
+        <div class="step-index">03</div>
+        <div>
+          <h3 id="export-title">结果导出</h3>
+          <p>处理完成后，从这里下载清洗后的 CSV 或分析结果 JSON。</p>
+        </div>
+        <span id="export-state" class="step-state">待调用</span>
+      </div>
+      <div class="button-row">
+        <button data-export-type="cleaned" type="button">导出清洗数据</button>
+        <button data-export-type="result" type="button">导出分析结果</button>
+      </div>
+      <p class="step-hint" id="export-hint">清洗成功后可导出 CSV，分析成功后可导出 JSON。</p>
+    </section>
+  </section>
 {% endblock %}
 
 {% block scripts %}

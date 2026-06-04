@@ -15,7 +15,7 @@
 - 前端多页面工作台设计与实现
 - 前端交互逻辑编写
 - 统一接口响应格式设计
-- SQLite 数据状态存储设计与实现
+- SQLite 状态接口调度与前端状态联通
 - 成员 B/C/D 功能接入口规划
 - README 和项目说明文档整理
 - 冗余代码、缓存文件和历史前端结构清理
@@ -74,6 +74,8 @@ API 路由包括：
 
 | 功能 | 方法 | 地址 |
 |---|---|---|
+| 数据集状态 | GET | `/api/datasets` |
+| 切换当前文件 | POST | `/api/datasets/<id>/activate` |
 | 上传数据 | POST | `/api/upload` |
 | 数据清洗 | POST | `/api/clean` |
 | 聚类分析 | POST | `/api/analyze` |
@@ -136,11 +138,13 @@ app/static/js/main.js
 
 `documents.html` 负责文件上传。我完成了：
 
-- CSV / XLS / XLSX 文件选择区域
-- 文件格式说明
-- 文件名、格式、大小前端展示
-- 上传按钮
-- 右侧响应详情展示
+- CSV / XLS / XLSX 文件选择区域和格式说明
+- 待上传文件队列展示，支持多个文件同时准备上传
+- “上传文件”和“处理后文件”两个文件区域
+- DocAI 风格紧凑文件行，展示文件名、格式、行列数、缺失值和处理状态
+- 上传文件区按钮收敛为“处理 / 图表 / 删除”
+- 处理后文件区按钮收敛为“图表 / 导出 / 删除”
+- 页面内状态提示，用于替代调试响应窗口
 
 前端上传字段固定为 `file`，与后端 `request.files.get("file")` 完全对应，成员 B 实现读取逻辑后无需改前端。
 
@@ -148,13 +152,16 @@ app/static/js/main.js
 
 `workflow.html` 负责清洗、分析和导出。我完成了：
 
+- 当前文件轻量展示，只保留文件信息、“移除”和“添加新文件”
 - 清洗选项：删除缺失值、删除重复行、检测异常值
 - K-Means 参数：只保留 `k` 值
+- “开始处理”一键式流程入口，点击一次后由前端按顺序调用清洗和分析接口
+- 上传、清洗、分析、导出四阶段进度观察区
+- 清洗影响摘要和聚类概览展示
 - 导出按钮：导出清洗数据、导出分析结果
-- 每一步的状态提示
-- 接口响应详情展示
+- 每一步的页面内状态提示
 
-这里有意避免让用户填写复杂字段，降低普通用户的使用门槛。
+这里有意避免让用户填写复杂字段，也避免让用户分别判断“先点清洗还是先点分析”，降低普通用户的使用门槛。
 
 ### 3.6 图表分析页面
 
@@ -169,9 +176,10 @@ app/static/js/main.js
 
 图表页还包含：
 
+- 当前文件轻量展示
 - Plotly 图表容器
 - 图表说明区域
-- 响应详情区域
+- 页面内状态提示
 
 ---
 
@@ -185,13 +193,15 @@ app/static/js/main.js
 - 封装 JSON POST 请求函数 `postJson()`
 - 上传文件时构造 `FormData`
 - 选择文件后展示文件名、格式和大小
-- 点击清洗按钮后提交清洗规则
-- 点击分析按钮后提交 `method=kmeans` 和 `k`
+- 支持拖拽上传、多文件选择、继续添加、清空队列和重复文件过滤
+- 渲染上传文件列表和处理后文件列表
+- 处理、图表、导出等按钮点击时先切换当前文件，再跳转到对应页面
+- 点击“开始处理”后，按顺序提交清洗规则和 `method=kmeans`、`k`
 - 点击导出按钮后请求对应导出接口
 - 点击图表类型后更新当前图表选择
 - 提交图表请求后读取 `data.figure`
 - 成员 C 返回 Plotly figure 后，用 `Plotly.react(...)` 渲染图表
-- 将每次接口返回展示在右侧响应详情区域
+- 接口结果不再展示调试 JSON，而是转换为页面内状态提示和列表刷新
 
 前端请求和后端接口保持一致：
 
@@ -202,6 +212,8 @@ POST /api/analyze
 GET /api/visualize?chart=scatter
 GET /api/export?type=cleaned
 GET /api/export?type=result
+GET /api/datasets
+POST /api/datasets/<id>/activate
 ```
 
 ---
@@ -327,7 +339,7 @@ GET /api/export?type=<type>
 统一响应格式的作用：
 
 - 前端可以统一解析接口结果
-- 响应详情区域可以直接展示 JSON
+- 前端可以根据 `code` 显示页面内状态提示
 - 后续成员不用各自设计返回格式
 - 调试时可以通过 `code` 快速判断问题
 
@@ -361,10 +373,12 @@ instance/dataflow.sqlite3
 
 ```text
 data_state
+dataset_runs
 ```
 
 保存内容：
 
+- `active_dataset_id`
 - `raw_dataset`
 - `cleaned_dataset`
 - `analysis_result`
@@ -381,9 +395,11 @@ set_analysis_result(result, summary=None)
 get_analysis_result()
 get_export_state()
 state_summary()
+list_dataset_runs()
+activate_dataset(dataset_id)
 ```
 
-当前使用 `sqlite3 + pickle` 保存 Python 对象。这个方案适合课程实验的本地可信环境，可以让 DataFrame、dict、分析结果等对象在不同接口之间流转。
+当前使用 `sqlite3 + pickle` 保存 Python 对象。这个方案适合课程实验的本地可信环境，可以让 DataFrame、dict、分析结果等对象在不同接口之间流转。我的贡献重点是维护路由层和前端对这些状态接口的调用，让页面能够知道当前文件、清洗状态和分析状态；上传历史和结果删除的具体数据管理归成员 B 文档说明。
 
 ---
 
@@ -531,7 +547,9 @@ http://127.0.0.1:5000/dashboard
 - 可以访问工作台、数据管理、处理流程和图表分析页面
 - 前端能调用上传、清洗、分析、可视化和导出接口
 - 接口返回格式统一
-- 上传、清洗、分析状态可以写入 SQLite
+- 页面可以展示上传文件、处理后文件和当前文件状态
+- 处理流程页支持一键执行清洗和分析
+- 上传、清洗、分析状态可以通过 SQLite 状态接口联通到前端
 - 其他成员可以在预留工具模块中继续补充功能
 - README 已写清运行环境、接口调用和协作边界
 

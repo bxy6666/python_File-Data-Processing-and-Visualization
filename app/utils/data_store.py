@@ -28,6 +28,22 @@ def connect_database():
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dataset_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            metadata BLOB NOT NULL,
+            raw_dataset BLOB NOT NULL,
+            cleaned_dataset BLOB,
+            analysis_result BLOB,
+            clean_summary BLOB,
+            analysis_summary BLOB,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     return connection
 
 
@@ -64,10 +80,6 @@ def upsert_value(connection, key, value):
     )
 
 
-def delete_values(connection, keys):
-    connection.executemany("DELETE FROM data_state WHERE key = ?", [(key,) for key in keys])
-
-
 def get_value(key, default=None):
     with database_connection() as connection:
         row = connection.execute("SELECT value FROM data_state WHERE key = ?", (key,)).fetchone()
@@ -76,67 +88,280 @@ def get_value(key, default=None):
     return deserialize(row[0])
 
 
-def has_value(key):
+def set_active_dataset_id(connection, dataset_id):
+    upsert_value(connection, "active_dataset_id", int(dataset_id))
+
+
+def get_active_dataset_id():
+    active_id = get_value("active_dataset_id")
+    if active_id is not None:
+        return int(active_id)
+
     with database_connection() as connection:
-        row = connection.execute("SELECT 1 FROM data_state WHERE key = ?", (key,)).fetchone()
-    return row is not None
+        row = connection.execute(
+            "SELECT id FROM dataset_runs ORDER BY updated_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+
+    return int(row[0]) if row else None
+
+
+def clear_active_dataset_id(connection):
+    connection.execute("DELETE FROM data_state WHERE key = ?", ("active_dataset_id",))
+
+
+def _dataset_row_to_dict(row):
+    if row is None:
+        return None
+
+    return {
+        "id": int(row[0]),
+        "filename": row[1],
+        "metadata": deserialize(row[2]) or {},
+        "raw_dataset": deserialize(row[3]),
+        "cleaned_dataset": deserialize(row[4]),
+        "analysis_result": deserialize(row[5]),
+        "clean_summary": deserialize(row[6]) or {},
+        "analysis_summary": deserialize(row[7]) or {},
+        "created_at": row[8],
+        "updated_at": row[9],
+    }
+
+
+def _summary_row_to_dict(row, active_dataset_id=None):
+    if row is None:
+        return None
+
+    dataset_id = int(row[0])
+    return {
+        "id": dataset_id,
+        "filename": row[1],
+        "metadata": deserialize(row[2]) or {},
+        "clean_summary": deserialize(row[6]) or {},
+        "analysis_summary": deserialize(row[7]) or {},
+        "created_at": row[8],
+        "updated_at": row[9],
+        "is_active": active_dataset_id == dataset_id,
+        "status": {
+            "has_raw_dataset": bool(row[3]),
+            "has_cleaned_dataset": bool(row[4]),
+            "has_analysis_result": bool(row[5]),
+        },
+    }
+
+
+def _fetch_dataset(connection, dataset_id):
+    row = connection.execute(
+        """
+        SELECT id, filename, metadata, raw_dataset, cleaned_dataset, analysis_result,
+               clean_summary, analysis_summary, created_at, updated_at
+        FROM dataset_runs
+        WHERE id = ?
+        """,
+        (int(dataset_id),),
+    ).fetchone()
+    return _dataset_row_to_dict(row)
+
+
+def _fetch_dataset_summary(connection, dataset_id, active_dataset_id=None):
+    row = connection.execute(
+        """
+        SELECT id, filename, metadata,
+               raw_dataset IS NOT NULL,
+               cleaned_dataset IS NOT NULL,
+               analysis_result IS NOT NULL,
+               clean_summary, analysis_summary, created_at, updated_at
+        FROM dataset_runs
+        WHERE id = ?
+        """,
+        (int(dataset_id),),
+    ).fetchone()
+    return _summary_row_to_dict(row, active_dataset_id)
+
+
+def _fetch_all_dataset_summaries(connection, active_dataset_id=None):
+    rows = connection.execute(
+        """
+        SELECT id, filename, metadata,
+               raw_dataset IS NOT NULL,
+               cleaned_dataset IS NOT NULL,
+               analysis_result IS NOT NULL,
+               clean_summary, analysis_summary, created_at, updated_at
+        FROM dataset_runs
+        ORDER BY updated_at DESC, id DESC
+        """
+    ).fetchall()
+    return [_summary_row_to_dict(row, active_dataset_id) for row in rows]
+
+
+def create_dataset_run(dataset, metadata=None):
+    metadata = metadata or {}
+    filename = metadata.get("filename") or "uploaded_dataset"
+
+    with database_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO dataset_runs (filename, metadata, raw_dataset)
+            VALUES (?, ?, ?)
+            """,
+            (filename, serialize(metadata), serialize(dataset)),
+        )
+        dataset_id = int(cursor.lastrowid)
+        set_active_dataset_id(connection, dataset_id)
+
+    return dataset_id
+
+
+def list_dataset_runs():
+    active_dataset_id = get_active_dataset_id()
+    with database_connection() as connection:
+        return _fetch_all_dataset_summaries(connection, active_dataset_id)
+
+
+def get_dataset_summary(dataset_id):
+    active_dataset_id = get_active_dataset_id()
+    with database_connection() as connection:
+        return _fetch_dataset_summary(connection, dataset_id, active_dataset_id)
+
+
+def get_active_dataset_summary():
+    active_dataset_id = get_active_dataset_id()
+    if active_dataset_id is None:
+        return None
+    return get_dataset_summary(active_dataset_id)
+
+
+def activate_dataset(dataset_id):
+    with database_connection() as connection:
+        dataset = _fetch_dataset_summary(connection, dataset_id, int(dataset_id))
+        if dataset is None:
+            raise ValueError("数据集不存在")
+        set_active_dataset_id(connection, dataset_id)
+
+    return get_dataset_summary(dataset_id)
+
+
+def delete_dataset_run(dataset_id):
+    dataset_id = int(dataset_id)
+    with database_connection() as connection:
+        dataset = _fetch_dataset_summary(connection, dataset_id, get_active_dataset_id())
+        if dataset is None:
+            raise ValueError("数据集不存在")
+
+        connection.execute("DELETE FROM dataset_runs WHERE id = ?", (dataset_id,))
+        if dataset.get("is_active"):
+            row = connection.execute(
+                "SELECT id FROM dataset_runs ORDER BY updated_at DESC, id DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                set_active_dataset_id(connection, int(row[0]))
+            else:
+                clear_active_dataset_id(connection)
+
+    return dataset
+
+
+def _resolve_dataset_id(dataset_id=None):
+    if dataset_id is not None:
+        return int(dataset_id)
+    return get_active_dataset_id()
+
+
+def _get_dataset_value(field, dataset_id=None):
+    resolved_id = _resolve_dataset_id(dataset_id)
+    if resolved_id is None:
+        return None
+
+    with database_connection() as connection:
+        dataset = _fetch_dataset(connection, resolved_id)
+
+    if dataset is None:
+        return None
+    return dataset.get(field)
+
+
+def _update_active_dataset(**fields):
+    dataset_id = get_active_dataset_id()
+    if dataset_id is None:
+        raise ValueError("请先上传数据")
+
+    allowed_fields = {"cleaned_dataset", "analysis_result", "clean_summary", "analysis_summary"}
+    unknown_fields = set(fields) - allowed_fields
+    if unknown_fields:
+        raise ValueError(f"不支持更新字段：{', '.join(sorted(unknown_fields))}")
+
+    assignments = [f"{field} = ?" for field in fields]
+    values = [serialize(value) for value in fields.values()]
+    assignments.append("updated_at = CURRENT_TIMESTAMP")
+
+    with database_connection() as connection:
+        connection.execute(
+            f"UPDATE dataset_runs SET {', '.join(assignments)} WHERE id = ?",
+            (*values, dataset_id),
+        )
 
 
 def get_metadata():
-    return get_value("metadata", {})
+    active_summary = get_active_dataset_summary()
+    if active_summary is None:
+        return {}
+    return {
+        "raw": active_summary.get("metadata", {}),
+        "cleaned": active_summary.get("clean_summary", {}),
+        "analysis": active_summary.get("analysis_summary", {}),
+    }
 
 
 def set_raw_dataset(dataset, metadata=None):
-    with database_connection() as connection:
-        upsert_value(connection, "raw_dataset", dataset)
-        delete_values(connection, ["cleaned_dataset", "analysis_result"])
-        upsert_value(connection, "metadata", {"raw": metadata or {}})
+    dataset_id = create_dataset_run(dataset, metadata)
+    return dataset_id
 
 
-def get_raw_dataset():
-    return get_value("raw_dataset")
+def get_raw_dataset(dataset_id=None):
+    return _get_dataset_value("raw_dataset", dataset_id)
 
 
 def set_cleaned_dataset(dataset, summary=None):
-    metadata = get_metadata()
-    metadata["cleaned"] = summary or {}
-    with database_connection() as connection:
-        upsert_value(connection, "cleaned_dataset", dataset)
-        delete_values(connection, ["analysis_result"])
-        upsert_value(connection, "metadata", metadata)
+    _update_active_dataset(
+        cleaned_dataset=dataset,
+        clean_summary=summary or {},
+        analysis_result=None,
+        analysis_summary={},
+    )
 
 
-def get_cleaned_dataset():
-    return get_value("cleaned_dataset")
+def get_cleaned_dataset(dataset_id=None):
+    return _get_dataset_value("cleaned_dataset", dataset_id)
 
 
 def set_analysis_result(result, summary=None):
-    metadata = get_metadata()
-    metadata["analysis"] = summary or {}
-    with database_connection() as connection:
-        upsert_value(connection, "analysis_result", result)
-        upsert_value(connection, "metadata", metadata)
+    _update_active_dataset(analysis_result=result, analysis_summary=summary or {})
 
 
-def get_analysis_result():
-    return get_value("analysis_result")
+def get_analysis_result(dataset_id=None):
+    return _get_dataset_value("analysis_result", dataset_id)
 
 
-def get_export_state():
+def get_export_state(dataset_id=None):
     return {
-        "raw_dataset": get_raw_dataset(),
-        "cleaned_dataset": get_cleaned_dataset(),
-        "analysis_result": get_analysis_result(),
-        "metadata": get_metadata(),
+        "dataset_id": _resolve_dataset_id(dataset_id),
+        "raw_dataset": get_raw_dataset(dataset_id),
+        "cleaned_dataset": get_cleaned_dataset(dataset_id),
+        "analysis_result": get_analysis_result(dataset_id),
+        "metadata": get_metadata() if dataset_id is None else (get_dataset_summary(dataset_id) or {}),
     }
 
 
 def state_summary():
+    active_dataset = get_active_dataset_summary()
+    datasets = list_dataset_runs()
     return {
         "storage": "sqlite",
         "database": DATABASE_LABEL,
-        "has_raw_dataset": has_value("raw_dataset"),
-        "has_cleaned_dataset": has_value("cleaned_dataset"),
-        "has_analysis_result": has_value("analysis_result"),
+        "active_dataset_id": active_dataset["id"] if active_dataset else None,
+        "active_dataset": active_dataset,
+        "dataset_count": len(datasets),
+        "has_raw_dataset": bool(active_dataset and active_dataset["status"]["has_raw_dataset"]),
+        "has_cleaned_dataset": bool(active_dataset and active_dataset["status"]["has_cleaned_dataset"]),
+        "has_analysis_result": bool(active_dataset and active_dataset["status"]["has_analysis_result"]),
         "metadata": get_metadata(),
     }

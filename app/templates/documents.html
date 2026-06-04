@@ -5,41 +5,47 @@
 {% block page_subtitle %}选择数据文件，为清洗、分析和图表生成做准备。{% endblock %}
 
 {% block content %}
-  <div class="content-grid">
-    <section id="upload-panel" class="panel-card">
+  <section id="upload-panel" class="panel-card upload-panel-wide">
+    <div class="section-heading compact">
+      <p class="eyebrow">Data Source</p>
+      <h2>上传数据文件</h2>
+      <p>选择 CSV 或 Excel 文件，上传后即可进入后续处理步骤。</p>
+    </div>
+    <form id="upload-form" class="drop-form">
+      <input id="file-input" name="file" type="file" accept=".csv,.xls,.xlsx" multiple>
+      <div id="selected-upload-panel" class="selected-upload-panel" aria-live="polite"></div>
+      <div id="file-meta" class="file-meta" aria-live="polite">尚未选择文件</div>
+    </form>
+    <div class="format-list">
+      <span>CSV 数据集</span>
+      <span>XLS / XLSX 表格</span>
+      <span>建议首行为字段名</span>
+    </div>
+  </section>
+
+  <section class="dataset-board">
+    <section class="panel-card">
       <div class="section-heading compact">
-        <p class="eyebrow">Data Source</p>
-        <h2>上传数据文件</h2>
-        <p>选择 CSV 或 Excel 文件，上传后即可进入后续处理步骤。</p>
+        <p class="eyebrow">Uploaded Files</p>
+        <h2>上传文件</h2>
+        <p>管理原始数据文件，选择当前处理对象。</p>
       </div>
-      <form id="upload-form" class="drop-form">
-        <label class="upload-dropzone" for="file-input">
-          <span class="upload-icon">CSV</span>
-          <strong>拖入文件或点击选择</strong>
-          <small>支持 .csv、.xls、.xlsx，建议首行为字段名</small>
-        </label>
-        <input id="file-input" name="file" type="file" accept=".csv,.xls,.xlsx">
-        <div id="file-meta" class="file-meta">尚未选择文件</div>
-        <button type="submit">上传数据</button>
-      </form>
-      <div class="format-list">
-        <span>CSV 数据集</span>
-        <span>XLS / XLSX 表格</span>
-        <span>建议首行为字段名</span>
+      <div id="dataset-list" class="dataset-list" aria-live="polite">
+        <div class="empty-state">暂无上传文件。</div>
       </div>
     </section>
 
-    <aside class="side-panel">
-      <section class="panel-card">
-        <div class="section-heading compact">
-          <p class="eyebrow">Response</p>
-          <h2>响应详情</h2>
-        </div>
-        <div id="message" class="message" aria-live="polite">等待操作。</div>
-        <pre id="response-output">{}</pre>
-      </section>
-    </aside>
-  </div>
+    <section class="panel-card">
+      <div class="section-heading compact">
+        <p class="eyebrow">Processed Files</p>
+        <h2>处理后文件</h2>
+        <p>归档已生成的清洗数据和分析结果。</p>
+      </div>
+      <div id="processed-list" class="dataset-list" aria-live="polite">
+        <div class="empty-state">暂无处理结果。</div>
+      </div>
+    </section>
+  </section>
 {% endblock %}
 
 {% block scripts %}
