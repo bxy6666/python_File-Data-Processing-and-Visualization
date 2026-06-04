@@ -9,6 +9,12 @@ const currentDatasetPanel = document.querySelector("#current-dataset-panel");
 const workflowStageEls = document.querySelectorAll("[data-flow-stage]");
 const clusterDistributionEl = document.querySelector("#cluster-distribution");
 const processStateEl = document.querySelector("#process-state");
+const predictRowsEl = document.querySelector("#predict-rows");
+const predictButtonEl = document.querySelector("#predict-button");
+const predictResultEl = document.querySelector("#predict-result");
+const predictColumnsEl = document.querySelector("#predict-columns");
+const predictExampleEl = document.querySelector("#predict-example");
+const predictFillExampleEl = document.querySelector("#predict-fill-example");
 const workflowMetrics = {
   rawRows: document.querySelector("#metric-raw-rows"),
   cleanRows: document.querySelector("#metric-clean-rows"),
@@ -26,6 +32,8 @@ const unavailableLabel = "暂不可用";
 const jsonHeaders = { "Content-Type": "application/json" };
 const supportedFilePattern = /\.(csv|xls|xlsx)$/i;
 let selectedUploadFiles = [];
+let currentPredictExampleRows = [];
+let currentClusterAxisRanges = {};
 
 const stepStateLabels = {
   idle: "待调用",
@@ -41,6 +49,7 @@ const apiMessages = {
   INVALID_CHART: "请选择支持的图表类型。",
   INVALID_FILE: "文件无法读取，请检查格式、编码或内容。",
   NO_FILE: "请选择或拖入一个 CSV / Excel 文件。",
+  INVALID_PREDICT_INPUT: "预测输入格式无效，请检查 JSON 内容和字段。",
 };
 
 function setStepState(stepName, state, label = stepStateLabels[state]) {
@@ -624,6 +633,157 @@ function featureCount(columns) {
   return columns || "-";
 }
 
+function getClusterCenterEntries(cluster, maxAxes = 8) {
+  const center = (cluster && cluster.center) || {};
+  const entries = Object.entries(center)
+    .filter(([, value]) => Number.isFinite(Number(value)))
+    .map(([name, value]) => ({ name, value: Number(value) }));
+
+  return entries.slice(0, maxAxes);
+}
+
+function buildClusterAxisRanges(clusters = []) {
+  const axisRanges = {};
+
+  clusters.forEach((cluster) => {
+    const center = (cluster && cluster.center) || {};
+    Object.entries(center).forEach(([name, value]) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {
+        return;
+      }
+
+      if (!(name in axisRanges)) {
+        axisRanges[name] = { min: numeric, max: numeric };
+        return;
+      }
+
+      if (numeric < axisRanges[name].min) {
+        axisRanges[name].min = numeric;
+      }
+      if (numeric > axisRanges[name].max) {
+        axisRanges[name].max = numeric;
+      }
+    });
+  });
+
+  return axisRanges;
+}
+
+function buildRadarSvg(entries, axisRanges = {}) {
+  const size = 260;
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = 92;
+  const levels = 4;
+  const axisCount = entries.length;
+
+  if (!axisCount) {
+    return '<p class="cluster-drawer-empty">当前类别缺少可绘制的数值特征。</p>';
+  }
+
+  const normalized = entries.map((item) => {
+    const axisRange = axisRanges[item.name] || {};
+    const axisMin = Number(axisRange.min);
+    const axisMax = Number(axisRange.max);
+    if (!Number.isFinite(axisMin) || !Number.isFinite(axisMax)) {
+      return 0;
+    }
+
+    const denominator = axisMax - axisMin;
+    if (denominator === 0) {
+      return 1;
+    }
+
+    const ratio = (item.value - axisMin) / denominator;
+    return Math.max(0, Math.min(1, ratio));
+  });
+
+  const points = normalized
+    .map((value, index) => {
+      const angle = -Math.PI / 2 + (index / axisCount) * Math.PI * 2;
+      const x = cx + Math.cos(angle) * (radius * value);
+      const y = cy + Math.sin(angle) * (radius * value);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  const rings = [];
+  for (let level = 1; level <= levels; level += 1) {
+    const levelRadius = radius * (level / levels);
+    const ringPoints = entries
+      .map((_, index) => {
+        const angle = -Math.PI / 2 + (index / axisCount) * Math.PI * 2;
+        const x = cx + Math.cos(angle) * levelRadius;
+        const y = cy + Math.sin(angle) * levelRadius;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+    rings.push(`<polygon class="radar-ring" points="${ringPoints}"/>`);
+  }
+
+  const axes = entries
+    .map((item, index) => {
+      const angle = -Math.PI / 2 + (index / axisCount) * Math.PI * 2;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      const labelX = cx + Math.cos(angle) * (radius + 18);
+      const labelY = cy + Math.sin(angle) * (radius + 18);
+      return `
+        <line class="radar-axis" x1="${cx}" y1="${cy}" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" />
+        <text class="radar-label" x="${labelX.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="middle">${item.name}</text>
+      `;
+    })
+    .join("");
+
+  return `
+    <svg class="cluster-radar" viewBox="0 0 ${size} ${size}" role="img" aria-label="类别特征雷达图">
+      <g>${rings.join("")}</g>
+      <g>${axes}</g>
+      <polygon class="radar-shape" points="${points}" />
+      <circle class="radar-center" cx="${cx}" cy="${cy}" r="3" />
+    </svg>
+  `;
+}
+
+function createClusterDrawer(cluster, axisRanges = {}) {
+  const drawer = document.createElement("div");
+  drawer.className = "cluster-drawer";
+  drawer.hidden = true;
+
+  const body = document.createElement("div");
+  body.className = "cluster-drawer-body";
+
+  const chart = document.createElement("div");
+  chart.className = "cluster-drawer-chart";
+
+  const values = document.createElement("div");
+  values.className = "cluster-drawer-values";
+
+  const entries = getClusterCenterEntries(cluster);
+  chart.innerHTML = buildRadarSvg(entries, axisRanges);
+
+  if (entries.length) {
+    values.innerHTML = entries
+      .map((item) => {
+        const axisRange = axisRanges[item.name] || {};
+        const axisMin = Number(axisRange.min);
+        const axisMax = Number(axisRange.max);
+        const axisMinText = Number.isFinite(axisMin) ? axisMin.toFixed(3) : "-";
+        const axisMaxText = Number.isFinite(axisMax) ? axisMax.toFixed(3) : "-";
+        return `<div class="cluster-drawer-item"><span>${item.name}</span><strong>${item.value.toFixed(3)} (${axisMinText} ~ ${axisMaxText})</strong></div>`;
+      })
+      .join("");
+  } else {
+    values.innerHTML = '<p class="cluster-drawer-empty">无可展示的中心特征。</p>';
+  }
+
+  body.appendChild(chart);
+  body.appendChild(values);
+  drawer.appendChild(body);
+  return drawer;
+}
+
 function renderClusterDistribution(clusters = []) {
   if (!clusterDistributionEl) {
     return;
@@ -631,17 +791,29 @@ function renderClusterDistribution(clusters = []) {
 
   clusterDistributionEl.innerHTML = "";
   if (!Array.isArray(clusters) || !clusters.length) {
+    currentClusterAxisRanges = {};
     clusterDistributionEl.appendChild(createText("p", "", "完成分析后显示聚类分布。"));
     return;
   }
 
   const counts = clusters.map((cluster) => Number(cluster.count) || 0);
   const maxCount = Math.max(...counts, 1);
+  currentClusterAxisRanges = buildClusterAxisRanges(clusters);
 
-  clusters.forEach((cluster) => {
+  const tip = createText("p", "cluster-hint", "点击类别可展开该簇的特征雷达图");
+  clusterDistributionEl.appendChild(tip);
+
+  clusters.forEach((cluster, index) => {
     const count = Number(cluster.count) || 0;
-    const row = document.createElement("div");
-    row.className = "cluster-row";
+    const item = document.createElement("article");
+    item.className = "cluster-item";
+
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "cluster-row cluster-row-button";
+    row.title = `查看类别 ${formatNumber(cluster.cluster)} 特征`;
+    row.setAttribute("aria-expanded", "false");
+    row.setAttribute("aria-controls", `cluster-drawer-${index}`);
 
     row.appendChild(createText("span", "cluster-label", `类别 ${formatNumber(cluster.cluster)}`));
 
@@ -654,12 +826,34 @@ function renderClusterDistribution(clusters = []) {
     row.appendChild(track);
 
     row.appendChild(createText("span", "cluster-count", `${formatNumber(count)} 行`));
-    clusterDistributionEl.appendChild(row);
+
+    const drawer = createClusterDrawer(cluster, currentClusterAxisRanges);
+    drawer.id = `cluster-drawer-${index}`;
+
+    row.addEventListener("click", () => {
+      const isOpen = row.getAttribute("aria-expanded") === "true";
+
+      if (isOpen) {
+        row.setAttribute("aria-expanded", "false");
+        item.classList.remove("is-open");
+        drawer.hidden = true;
+        return;
+      }
+
+      row.setAttribute("aria-expanded", "true");
+      item.classList.add("is-open");
+      drawer.hidden = false;
+    });
+
+    item.appendChild(row);
+    item.appendChild(drawer);
+    clusterDistributionEl.appendChild(item);
   });
 }
 
 function renderWorkflowProgress(activeDataset) {
   if (!workflowStageEls.length && !clusterDistributionEl) {
+    updatePredictGuidance(activeDataset);
     return;
   }
 
@@ -670,6 +864,7 @@ function renderWorkflowProgress(activeDataset) {
     setFlowStage("export", "pending", "等待结果", "完成清洗或分析后可导出");
     setProcessState("请先添加新文件后开始处理。");
     clearWorkflowMetrics();
+    updatePredictGuidance(activeDataset);
     return;
   }
 
@@ -737,6 +932,7 @@ function renderWorkflowProgress(activeDataset) {
   setWorkflowMetric("featureCount", status.has_analysis_result ? featureCount(analysisSummary.columns) : "-");
   setWorkflowMetric("inertia", status.has_analysis_result ? analysisSummary.inertia : "-");
   renderClusterDistribution(status.has_analysis_result ? analysisSummary.clusters : []);
+  updatePredictGuidance(activeDataset);
 }
 
 async function loadDatasets() {
@@ -962,6 +1158,107 @@ function getAnalyzePayload() {
   };
 }
 
+function buildPredictExampleRows(columns = []) {
+  if (!Array.isArray(columns) || !columns.length) {
+    return [];
+  }
+
+  const rowA = {};
+  const rowB = {};
+  columns.forEach((column, index) => {
+    rowA[column] = Number((10 + (index + 1) * 2.5).toFixed(2));
+    rowB[column] = Number((30 + (index + 1) * 3.5).toFixed(2));
+  });
+
+  return [rowA, rowB];
+}
+
+function updatePredictGuidance(activeDataset) {
+  if (!predictColumnsEl && !predictExampleEl && !predictRowsEl && !predictFillExampleEl) {
+    return;
+  }
+
+  const columns = activeDataset?.analysis_summary?.columns;
+  const hasColumns = Array.isArray(columns) && columns.length > 0;
+
+  if (!hasColumns) {
+    currentPredictExampleRows = [];
+    if (predictColumnsEl) {
+      predictColumnsEl.textContent = "预测所需属性：请先完成 K-Means 分析后自动显示。";
+    }
+    if (predictExampleEl) {
+      predictExampleEl.textContent = "示例会在完成分析后自动生成。";
+    }
+    if (predictRowsEl) {
+      predictRowsEl.placeholder = '[{"sales": 15, "profit": 2.3}, {"sales": 75, "profit": 9.8}]';
+    }
+    if (predictFillExampleEl) {
+      predictFillExampleEl.disabled = true;
+    }
+    return;
+  }
+
+  currentPredictExampleRows = buildPredictExampleRows(columns);
+  const prettyExample = JSON.stringify(currentPredictExampleRows, null, 2);
+
+  if (predictColumnsEl) {
+    predictColumnsEl.textContent = `预测所需属性：${columns.join("、")}`;
+  }
+  if (predictExampleEl) {
+    predictExampleEl.textContent = prettyExample;
+  }
+  if (predictRowsEl) {
+    predictRowsEl.placeholder = prettyExample;
+  }
+  if (predictFillExampleEl) {
+    predictFillExampleEl.disabled = false;
+  }
+}
+
+function parsePredictRows() {
+  const rawText = predictRowsEl?.value?.trim() || "";
+  if (!rawText) {
+    throw new Error("请输入预测样本 JSON 数组");
+  }
+
+  let rows;
+  try {
+    rows = JSON.parse(rawText);
+  } catch (_error) {
+    throw new Error("JSON 格式不正确，请输入数组，例如 [{\"sales\": 10, \"profit\": 2}] ");
+  }
+
+  if (!Array.isArray(rows) || !rows.length) {
+    throw new Error("预测输入必须是非空 JSON 数组");
+  }
+
+  return rows;
+}
+
+function renderPredictResult(data) {
+  if (!predictResultEl) {
+    return;
+  }
+
+  const summary = data?.data?.summary || {};
+  const result = data?.data?.result || {};
+  const rows = Array.isArray(result.predictions) ? result.predictions : [];
+
+  const lines = [];
+  lines.push(`预测完成：使用 ${summary.rows_used ?? "-"} 行，跳过 ${summary.rows_skipped ?? "-"} 行`);
+  lines.push(`字段：${Array.isArray(summary.columns) ? summary.columns.join(", ") : "-"}`);
+  lines.push("预测结果：");
+  rows.slice(0, 20).forEach((item) => {
+    lines.push(`- row_index=${item.row_index}, cluster=${item.cluster}, distance=${item.distance}`);
+  });
+
+  if (rows.length > 20) {
+    lines.push(`... 其余 ${rows.length - 20} 条已省略`);
+  }
+
+  predictResultEl.textContent = lines.join("\n");
+}
+
 async function runCleanStep() {
   setStepState("clean", "pending");
   setStepState("analyze", "idle", "等待清洗");
@@ -1004,6 +1301,35 @@ async function runAnalyzeStep() {
   return response;
 }
 
+async function runPredictStep() {
+  if (!predictRowsEl || !predictResultEl) {
+    return;
+  }
+
+  let rows;
+  try {
+    rows = parsePredictRows();
+  } catch (error) {
+    setStepState("predict", "error", "输入错误");
+    predictResultEl.textContent = error.message;
+    showLocalMessage(error.message, true);
+    return;
+  }
+
+  setStepState("predict", "pending", "预测中");
+  predictResultEl.textContent = "正在执行预测...";
+
+  const { response, data } = await postJson("/api/predict", { rows });
+  finishStep("predict", response, "已预测");
+
+  if (response.ok) {
+    renderPredictResult(data);
+    return;
+  }
+
+  predictResultEl.textContent = data?.message || "预测失败，请检查输入字段是否和分析字段一致。";
+}
+
 const processButton = document.querySelector("#process-button");
 if (processButton) {
   processButton.addEventListener("click", async () => {
@@ -1021,6 +1347,35 @@ if (processButton) {
       processButton.disabled = false;
       processButton.textContent = "开始处理";
     }
+  });
+}
+
+if (predictButtonEl) {
+  predictButtonEl.addEventListener("click", async () => {
+    predictButtonEl.disabled = true;
+    predictButtonEl.textContent = "预测中";
+    try {
+      await runPredictStep();
+    } finally {
+      predictButtonEl.disabled = false;
+      predictButtonEl.textContent = "执行预测";
+    }
+  });
+}
+
+if (predictFillExampleEl) {
+  predictFillExampleEl.addEventListener("click", () => {
+    if (!predictRowsEl) {
+      return;
+    }
+
+    if (!currentPredictExampleRows.length) {
+      showLocalMessage("请先完成分析后再填充示例。", true);
+      return;
+    }
+
+    predictRowsEl.value = JSON.stringify(currentPredictExampleRows, null, 2);
+    showLocalMessage("已填充预测示例，可直接点击执行预测。");
   });
 }
 

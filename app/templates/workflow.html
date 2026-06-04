@@ -83,9 +83,12 @@
             <dd id="metric-missing-change">-</dd>
           </div>
         </dl>
-      </section>
+        </dl>
+        </section>
 
-      <section class="process-insight" aria-labelledby="analysis-impact-title">
+        <div class="insights-divider" role="separator" aria-hidden="true"></div>
+
+        <section class="process-insight" aria-labelledby="analysis-impact-title">
         <div class="insight-heading">
           <p class="eyebrow">Analysis Result</p>
           <h3 id="analysis-impact-title">聚类概览</h3>
@@ -166,8 +169,32 @@
     </div>
 
     <section id="export-panel" class="step export-step" data-step="export" data-state="idle" aria-labelledby="export-title">
+    <section class="step export-step" data-step="predict" data-state="idle" aria-labelledby="predict-title">
       <div class="step-head">
         <div class="step-index">03</div>
+        <div>
+          <h3 id="predict-title">预测分析</h3>
+          <p>输入 JSON 数组样本，基于当前 K-Means 结果预测所属簇。</p>
+        </div>
+        <span id="predict-state" class="step-state">待调用</span>
+      </div>
+      <div class="field-grid">
+        <label>
+          预测样本（JSON）
+          <textarea id="predict-rows" rows="6" placeholder='[{"sales": 15, "profit": 2.3}, {"sales": 75, "profit": 9.8}]'></textarea>
+        </label>
+      </div>
+      <p id="predict-columns" class="step-hint">完成分析后会显示可预测属性。</p>
+      <pre id="predict-example" class="step-hint">示例会在完成分析后自动生成。</pre>
+      <div class="button-row">
+        <button id="predict-fill-example" type="button">填充示例</button>
+        <button id="predict-button" type="button">执行预测</button>
+      </div>
+    </section>
+
+    <section id="export-panel" class="step export-step" data-step="export" data-state="idle" aria-labelledby="export-title">
+      <div class="step-head">
+        <div class="step-index">04</div>
         <div>
           <h3 id="export-title">结果导出</h3>
           <p>处理完成后，从这里下载清洗后的 CSV 或分析结果 JSON。</p>

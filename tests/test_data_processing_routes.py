@@ -75,6 +75,38 @@ class DataProcessingRouteTests(unittest.TestCase):
         self.assertEqual(payload["data"]["export"]["filename"], "cleaned_dataset.csv")
         self.assertIn("sales,profit", payload["data"]["export"]["content"])
 
+    def test_predict_endpoint_returns_prediction_summary(self):
+        fake_result = {
+            "result": {"predictions": [{"row_index": "0", "cluster": 1, "distance": 0.123}]},
+            "summary": {"rows_used": 1, "rows_skipped": 0, "columns": ["sales", "profit"], "k": 2},
+        }
+
+        with (
+            mock.patch("app.routes.get_analysis_result", return_value={"method": "kmeans", "model": {}}),
+            mock.patch("app.routes.run_kmeans_predict", return_value=fake_result),
+            mock.patch("app.routes.state_summary", return_value={"storage": "test"}),
+        ):
+            response = self.client.post(
+                "/api/predict",
+                json={"rows": [{"sales": 10, "profit": 1}]},
+            )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], "PREDICT_OK")
+        self.assertEqual(payload["data"]["summary"]["rows_used"], 1)
+
+    def test_predict_endpoint_requires_analysis_result(self):
+        with mock.patch("app.routes.get_analysis_result", return_value=None):
+            response = self.client.post(
+                "/api/predict",
+                json={"rows": [{"sales": 10, "profit": 1}]},
+            )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(payload["code"], "DATA_NOT_READY")
+
 
 if __name__ == "__main__":
     unittest.main()

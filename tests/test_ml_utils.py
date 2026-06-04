@@ -42,6 +42,32 @@ class RunKMeansTests(unittest.TestCase):
         self.assertEqual(summary["k"], analysis["k"])
         self.assertEqual(summary["columns"], analysis["columns"])
         self.assertEqual(summary["clusters"], analysis["clusters"])
+        self.assertIn("model", analysis)
+        self.assertEqual(analysis["model"]["type"], "kmeans")
+
+    def test_run_kmeans_predict_returns_cluster_for_new_rows(self):
+        trained = ml_utils.run_kmeans(self.make_clustered_dataframe(), 2)
+        predict_rows = [
+            {"sales": 10.5, "profit": 1.2},
+            {"sales": 81.0, "profit": 10.5},
+        ]
+
+        prediction = ml_utils.run_kmeans_predict(predict_rows, trained["result"])
+
+        self.assertEqual(set(prediction), {"result", "summary"})
+        self.assertEqual(prediction["summary"]["rows_used"], 2)
+        self.assertEqual(len(prediction["result"]["predictions"]), 2)
+        self.assertTrue(all(item["cluster"] in {0, 1} for item in prediction["result"]["predictions"]))
+
+    def test_run_kmeans_predict_rejects_missing_columns(self):
+        trained = ml_utils.run_kmeans(self.make_clustered_dataframe(), 2)
+
+        with self.assertRaisesRegex(ValueError, "缺少字段"):
+            ml_utils.run_kmeans_predict([{"sales": 10.0}], trained["result"])
+
+    def test_run_kmeans_predict_rejects_invalid_model(self):
+        with self.assertRaisesRegex(ValueError, "不包含可用于预测的模型参数"):
+            ml_utils.run_kmeans_predict([{"sales": 10, "profit": 1}], {"method": "kmeans"})
 
     def test_run_kmeans_finds_expected_cluster_centers(self):
         result = ml_utils.run_kmeans(self.make_clustered_dataframe(), 2)

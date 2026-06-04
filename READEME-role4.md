@@ -4,11 +4,13 @@
 
 我主要完成了 K-Means 聚类算法接入、数值字段自动选择、缺失样本防御性处理、特征标准化、聚类结果结构设计、依赖补充和单元测试编写。通过这些工作，项目从“只具备分析接口占位”推进到了“具备真实机器学习分析能力”的阶段。
 
+此外，我还对前端显示做了调整，使聚类摘要与图表更好地适配后端返回的 `summary` 字段和 `labels` 格式，减少前端对内部 `result` 结构的依赖并提升展示一致性。
+
 ---
 
-## 1. 我的负责范围
+## 1. 负责范围
 
-我负责的内容主要包括：
+负责的内容主要包括：
 
 - 数据分析与机器学习模块实现
 - K-Means 聚类算法接入
@@ -21,8 +23,9 @@
 - 机器学习依赖补充
 - 机器学习模块单元测试编写
 - 验收答辩相关说明文档整理
+ - 对前端展示（摘要与图表）进行了适配与调整，使前端直接消费 `summary` 和 `labels` 字段
 
-我没有直接实现的内容：
+没有直接实现的内容：
 
 - 文件上传和 CSV/Excel 读取逻辑
 - 缺失值、重复值、异常值等清洗规则的具体实现
@@ -37,7 +40,7 @@
 
 ## 2. 模块位置与调用流程
 
-我的主要代码位于：
+主要代码位于：
 
 ```text
 app/utils/ml_utils.py
@@ -47,11 +50,18 @@ app/utils/ml_utils.py
 
 ```python
 run_kmeans(dataframe, k)
+run_kmeans_predict(input_data, analysis_result)
 ```
 
-它由后端路由 `app/routes.py` 中的 `/api/analyze` 接口调用。整体流程如下：
+调用与使用场景：
+
+- `run_kmeans`：主要由后端路由（示例：`/api/analyze`）触发，流程为前端提交 `k` → 路由读取清洗后数据 → 调用 `run_kmeans` → 保存 `analysis_result` → 返回分析完成响应。
+- `run_kmeans_predict`：用于对新样本进行簇预测，可被后端路由、批处理任务或其他后端模块调用（例如提供预测 API 或在数据导入后自动运行预测）。该函数依赖 `run_kmeans` 的输出（`analysis_result["model"]`）作为预测参数来源。
+
+整体流程示意：
 
 ```text
+（分析）
 用户在前端输入 k 值
         ↓
 POST /api/analyze
@@ -65,72 +75,99 @@ POST /api/analyze
 保存 analysis_result
         ↓
 返回 ANALYZE_OK 响应
+
+（预测）
+前端或后端任务提供新样本 input_data
+        ↓
+调用 run_kmeans_predict(input_data, analysis_result)
+        ↓
+返回 predictions / summary
 ```
 
-在这个流程中，路由层负责接口调度和统一响应，我的模块负责真正的机器学习分析逻辑。
+在这个流程中，路由层负责接口调度和统一响应，我的模块负责真正的机器学习分析与预测逻辑。
 
 ---
 
-## 3. K-Means 分析函数贡献
+## 3. K-Means 分析函数
 
-### 3.1 函数输入
+下面分别对两个主要函数按相同结构进行说明：输入、参数校验、特殊处理/预处理、实现要点、返回值格式和前端使用建议。
 
-`run_kmeans(dataframe, k)` 接收两个参数：
+### A. `run_kmeans(dataframe, k)`
 
-- `dataframe`：清洗模块返回的 Pandas DataFrame。
-- `k`：聚类数量，由前端输入并传入后端。
+1) 输入：
 
-函数会优先使用清洗后的数据进行聚类，不直接处理原始上传数据。这样可以保证机器学习模块建立在较干净的数据基础上。
+- `dataframe`: Pandas `DataFrame`（或实现 `select_dtypes` 接口的对象），通常来自清洗模块的 `cleaned_dataset`。
+- `k`: 可转换为整数的数值类型，指定聚类簇数。
 
-### 3.2 参数校验
+2) 参数校验：
 
-我在函数中补充了对 `k` 的二次校验：
+- `k` 必须能转换为 `int`。
+- `k >= 2`。
+- `k` 不得大于参与聚类的有效样本数量（删除包含参与列缺失值的行后）。
 
-- `k` 必须能转换为整数。
-- `k` 不能小于 2。
-- `k` 不能大于实际可用样本数量。
+3) 特殊处理 / 预处理：
 
-这样即使路由层已经做过基础校验，机器学习模块本身也具备独立的防御能力，避免被错误输入直接破坏。
+- 自动选择数值列：`dataframe.select_dtypes(include=["number"])`。
+- 删除包含缺失值的样本行：`dropna(axis=0, how="any")`，并记录 `rows_skipped`。
 
-### 3.3 数值字段自动选择
+4) 实现要点：
 
-K-Means 是基于距离计算的算法，只能处理数值型字段。因此我实现了 `_select_numeric_dataframe(dataframe)`，自动从 DataFrame 中筛选数值列：
+- 使用 `StandardScaler` 对数值特征做标准化，保存 `mean` 与 `scale` 以便后续预测复用。
+- 在标准化空间上运行 `KMeans(n_clusters=k, random_state=42, n_init=10)`。
+- 将模型簇中心逆标准化（`scaler.inverse_transform`）以获得便于解释的原始尺度中心。
 
-```python
-dataframe.select_dtypes(include=["number"])
-```
+5) 返回值格式：
 
-如果数据中没有任何数值列，模块会抛出明确错误：
+- 返回 `{ "result": result, "summary": summary }`。
+- `result` 包含 `method, k, columns, rows_used, rows_skipped, inertia, clusters, labels, model`（其中 `model` 含 `scaler.mean/scale` 与 `centers_scaled`）。
+- `summary` 为前端快速展示摘要，含 `k, columns, rows_used, rows_skipped, inertia, clusters`。
 
-```text
-数据中没有可用于聚类的数值列
-```
+6) 前端使用建议：
 
-这样可以避免用户上传文本型表格时，算法在不可用数据上强行运行。
-
-### 3.4 缺失样本处理
-
-虽然项目中有单独的数据清洗模块，但为了保证机器学习模块自身稳定，我仍然在聚类前对数值列中的缺失样本做了防御性处理：
-
-```python
-numeric_dataframe.dropna(axis=0, how="any")
-```
-
-如果某一行在参与聚类的数值列中存在缺失值，就跳过这一行。同时模块会记录跳过的行数，并在结果中返回：
-
-```text
-rows_skipped
-```
-
-这样做可以保证算法不会因为少量缺失值直接失败，也方便用户知道实际参与分析的数据量。
+- 前端应以 `summary` 为主进行展示（摘要卡、图表）；使用 `labels` 做逐点/逐行标注，只有在需要深度交互或导出时才请求 `result` 的详细字段。
 
 ---
 
-## 4. 聚类算法实现贡献
+### B. `run_kmeans_predict(input_data, analysis_result)`
+
+1) 输入：
+
+- `input_data`: 接受 Pandas `DataFrame`、`list`（多条记录）或 `dict`（单条记录）；函数内部会在必要时用 `pd.DataFrame` 转换。
+- `analysis_result`: 来自 `run_kmeans(...)["result"]` 的分析结果或等价字典，必须包含 `model` 子字典（`columns`, `scaler.mean`, `scaler.scale`, `centers_scaled`）。
+
+2) 参数校验：
+
+- 检查 `analysis_result` 含 `model`，并确认 `columns`, `mean`, `scale`, `centers_scaled` 格式与维度一致。
+- 检查 `input_data` 是否包含 `model["columns"]` 指定的所有字段，若缺失字段则抛出 `ValueError`。
+
+3) 特殊处理 / 预处理：
+
+- 选择模型字段并删除包含缺失值的行，记录 `rows_received`、`rows_used` 和 `rows_skipped`。
+- 尝试将字段转换为数值（`float`），转换失败抛出 `ValueError`。
+
+4) 实现要点：
+
+- 使用 `analysis_result["model"]["mean"]` 与 `scale` 对每行按训练时相同规则进行标准化（处理 `scale==0` 的情形）。
+- 在标准化空间中计算样本到每个 `centers_scaled` 的欧氏距离，选取最小距离对应的簇为预测簇；返回距离为欧氏距离的平方根并保留小数位。
+
+5) 返回值格式：
+
+- 返回 `{ "result": result, "summary": summary }`。
+- `result` 包含 `method: "kmeans_predict"`, `k`, `columns`, `rows_received`, `rows_used`, `rows_skipped`, `predictions`（每条的 `row_index`, `cluster`, `distance`）和 `clusters`（每簇计数）。
+- `summary` 包含 `k, columns, rows_received, rows_used, rows_skipped, clusters`，用于前端展示。
+
+6) 前端使用建议：
+
+- 前端可直接使用 `result.predictions` 绘制预测明细表与按簇统计图；使用 `summary.clusters` 做聚合展示。确保前端表格的索引与 `row_index` 对齐以便高亮或跳转。
+
+
+---
+
+## 4. 聚类算法实现
 
 ### 4.1 特征标准化
 
-我使用 scikit-learn 的 `StandardScaler` 对特征进行标准化：
+使用 scikit-learn 的 `StandardScaler` 对特征进行标准化：
 
 ```python
 scaler = StandardScaler()
@@ -156,7 +193,7 @@ labels = model.fit_predict(scaled_features)
 
 ### 4.3 聚类中心还原
 
-K-Means 是在标准化后的数据上运行的，但用户更容易理解原始数据尺度。因此我将聚类中心从标准化空间还原回原始数值尺度：
+K-Means 是在标准化后的数据上运行的，但用户更容易理解原始数据尺度。因此将聚类中心从标准化空间还原回原始数值尺度：
 
 ```python
 centers = scaler.inverse_transform(model.cluster_centers_)
@@ -166,9 +203,9 @@ centers = scaler.inverse_transform(model.cluster_centers_)
 
 ---
 
-## 5. 分析结果结构贡献
+## 5. 分析结果结构
 
-我的模块返回符合项目约定的结构：
+模块返回符合项目约定的结构：
 
 ```python
 {
@@ -205,13 +242,15 @@ centers = scaler.inverse_transform(model.cluster_centers_)
 
 这样前端不需要解析完整细节，也能快速展示分析摘要。
 
+我也对前端的显示逻辑提出并实现了小范围调整（前端代码由前端同学合并），使得前端组件直接使用 `summary` 字段进行汇总展示，只有在需要时才访问 `result` 的详细信息，从而降低了前后端耦合。
+
 ---
 
 ## 6. 与项目其他模块的协作
 
 ### 6.1 与清洗模块的协作
 
-我的模块依赖清洗模块生成的：
+该模块依赖清洗模块生成的：
 
 ```text
 cleaned_dataset
@@ -231,7 +270,7 @@ set_analysis_result(analysis_result, summary)
 
 ### 6.3 与可视化模块的协作
 
-我的模块返回的 `labels`、`clusters` 和 `center` 可以直接供图表模块使用。例如：
+模块返回的 `labels`、`clusters` 和 `center` 可以直接供图表模块使用。例如：
 
 - 散点图可以按聚类标签区分颜色。
 - 柱状图可以展示不同 cluster 的样本数量。
@@ -261,7 +300,7 @@ scikit-learn>=1.4,<2.0
 
 ## 8. 单元测试贡献
 
-我新增了测试目录和测试文件：
+新增了测试目录和测试文件：
 
 ```text
 tests/__init__.py
@@ -310,7 +349,7 @@ python -m compileall app tests
 
 ## 9. 当前完成效果
 
-当前我的模块已经具备以下能力：
+当前模块已经具备以下能力：
 
 - 可以被 `/api/analyze` 接口调用
 - 可以读取清洗后的 DataFrame
@@ -321,6 +360,8 @@ python -m compileall app tests
 - 可以生成分析摘要
 - 可以将结果交给状态存储、可视化和导出流程继续使用
 - 有单元测试验证核心逻辑
+
+- 前端显示已根据 `summary` 与 `labels` 字段完成适配，图表和摘要组件能直接消费后端返回的展示字段
 
 这使项目不再只是保留机器学习接口，而是具备了真实的数据分析功能。
 

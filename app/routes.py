@@ -17,7 +17,7 @@ from .utils.data_store import (
     state_summary,
 )
 from .utils.file_utils import export_dataset, read_uploaded_file
-from .utils.ml_utils import run_kmeans
+from .utils.ml_utils import run_kmeans, run_kmeans_predict
 from .utils.response_utils import error_response, json_response, success_response
 
 bp = Blueprint("main", __name__)
@@ -221,6 +221,38 @@ def visualize_data():
     chart = request.args.get("chart", "scatter")
     payload, http_status = create_chart_response(chart, get_cleaned_dataset(), get_analysis_result())
     return json_response(payload, http_status)
+
+
+@bp.post("/api/predict")
+def predict_data():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows")
+    if not rows:
+        return error_response("INVALID_PREDICT_INPUT", "rows 不能为空", http_status=400)
+
+    analysis_result = get_analysis_result()
+    if analysis_result is None:
+        return error_response(
+            "DATA_NOT_READY",
+            "请先完成数据分析",
+            {"required": "analysis_result", "state": state_summary()},
+            409,
+        )
+
+    try:
+        result = run_kmeans_predict(rows, analysis_result)
+    except ValueError as error:
+        return error_response("INVALID_PREDICT_INPUT", str(error), http_status=400)
+
+    return success_response(
+        "PREDICT_OK",
+        "预测完成",
+        {
+            "summary": result.get("summary", {}),
+            "result": result.get("result"),
+            "state": state_summary(),
+        },
+    )
 
 
 @bp.get("/api/export")
