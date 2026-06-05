@@ -185,10 +185,14 @@
         </label>
       </div>
       <p id="predict-columns" class="step-hint">完成分析后会显示可预测属性。</p>
-      <pre id="predict-example" class="step-hint">示例会在完成分析后自动生成。</pre>
       <div class="button-row">
-        <button id="predict-fill-example" type="button">填充示例</button>
+        <button id="predict-fill-example" type="button">填充文件数据</button>
         <button id="predict-button" type="button">执行预测</button>
+      </div>
+      <div class="predict-result-panel" aria-live="polite">
+        <strong>预测结果</strong>
+        <p class="predict-result-note">此处仅展示预测摘要和前 20 条结果，完整预测结果请导出查看。</p>
+        <pre id="predict-result">暂无预测结果。</pre>
       </div>
     </section>
 

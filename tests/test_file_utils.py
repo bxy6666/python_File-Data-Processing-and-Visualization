@@ -91,6 +91,19 @@ class ExportDatasetTests(unittest.TestCase):
         self.assertEqual(result["format"], "json")
         self.assertEqual(json.loads(result["content"]), analysis_result)
 
+    def test_export_analysis_result_includes_prediction_file_when_available(self):
+        analysis_result = {"method": "kmeans"}
+        prediction_result = {"result": {"predictions": [{"row_index": "0", "cluster": 1}]}}
+
+        result = export_dataset(
+            "result",
+            {"analysis_result": analysis_result, "prediction_result": prediction_result},
+        )
+
+        self.assertEqual([file["filename"] for file in result["files"]], ["analysis_result.json", "prediction_result.json"])
+        self.assertEqual(json.loads(result["files"][0]["content"]), analysis_result)
+        self.assertEqual(json.loads(result["files"][1]["content"]), prediction_result)
+
     def test_export_cleaned_dataset_requires_data(self):
         with self.assertRaisesRegex(ValueError, "没有可导出的清洗数据"):
             export_dataset("cleaned", {"cleaned_dataset": None})

@@ -1674,6 +1674,38 @@ label {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.predict-result-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--panel-soft);
+}
+
+.predict-result-panel strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.predict-result-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#predict-result {
+  min-height: 96px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .visual-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;

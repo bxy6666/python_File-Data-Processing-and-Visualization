@@ -80,10 +80,12 @@ class DataProcessingRouteTests(unittest.TestCase):
             "result": {"predictions": [{"row_index": "0", "cluster": 1, "distance": 0.123}]},
             "summary": {"rows_used": 1, "rows_skipped": 0, "columns": ["sales", "profit"], "k": 2},
         }
+        captured = {}
 
         with (
             mock.patch("app.routes.get_analysis_result", return_value={"method": "kmeans", "model": {}}),
             mock.patch("app.routes.run_kmeans_predict", return_value=fake_result),
+            mock.patch("app.routes.set_prediction_result", side_effect=lambda result: captured.setdefault("result", result)),
             mock.patch("app.routes.state_summary", return_value={"storage": "test"}),
         ):
             response = self.client.post(
@@ -95,6 +97,26 @@ class DataProcessingRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["code"], "PREDICT_OK")
         self.assertEqual(payload["data"]["summary"]["rows_used"], 1)
+        self.assertEqual(captured["result"]["result"], fake_result["result"])
+
+    def test_predict_rows_endpoint_returns_current_file_rows(self):
+        predict_rows = {
+            "columns": ["sales", "profit"],
+            "rows": [{"sales": 10.0, "profit": 1.0}, {"sales": 20.0, "profit": 2.0}],
+            "rows_used": 2,
+            "rows_skipped": 0,
+        }
+
+        with (
+            mock.patch("app.routes.get_predict_input_rows", return_value=predict_rows),
+            mock.patch("app.routes.state_summary", return_value={"storage": "test"}),
+        ):
+            response = self.client.get("/api/predict/rows")
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], "PREDICT_ROWS_OK")
+        self.assertEqual(payload["data"]["predict_rows"]["rows"], predict_rows["rows"])
 
     def test_predict_endpoint_requires_analysis_result(self):
         with mock.patch("app.routes.get_analysis_result", return_value=None):

@@ -141,10 +141,29 @@ def export_dataset(export_type, state):
         result = state.get("analysis_result") if isinstance(state, dict) else None
         if result is None:
             raise ValueError("没有可导出的分析结果")
-        return {
+        analysis_file = {
             "filename": "analysis_result.json",
             "format": "json",
             "content": json.dumps(result, ensure_ascii=False, indent=2, default=_json_default),
+        }
+        files = [analysis_file]
+        prediction_result = state.get("prediction_result") if isinstance(state, dict) else None
+        if prediction_result is not None:
+            files.append(
+                {
+                    "filename": "prediction_result.json",
+                    "format": "json",
+                    "content": json.dumps(
+                        prediction_result,
+                        ensure_ascii=False,
+                        indent=2,
+                        default=_json_default,
+                    ),
+                }
+            )
+        return {
+            **analysis_file,
+            "files": files,
         }
 
     raise ValueError("type 仅支持 cleaned 或 result")

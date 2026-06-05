@@ -35,6 +35,11 @@ class DatasetHistoryRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.get_json()
 
+    def analyze_current(self):
+        response = self.client.post("/api/analyze", json={"method": "kmeans", "k": 2})
+        self.assertEqual(response.status_code, 200)
+        return response.get_json()
+
     def test_upload_history_lists_multiple_files_and_activation_switches_current_dataset(self):
         first_id = self.upload_csv("first.csv", "name,sales\nA,10\nB,20\n")
         second_id = self.upload_csv("second.csv", "name,sales\nC,100\nD,200\n")
@@ -63,6 +68,19 @@ class DatasetHistoryRouteTests(unittest.TestCase):
 
         self.assertEqual(first_clean["data"]["summary"]["input_rows"], 2)
         self.assertEqual(first_clean["data"]["summary"]["output_rows"], 2)
+
+    def test_status_flags_do_not_treat_cleared_results_as_ready(self):
+        self.upload_csv("status.csv", "name,sales,profit\nA,10,1\nB,20,2\nC,30,3\n")
+
+        clean_payload = self.clean_current()
+        clean_status = clean_payload["data"]["state"]["active_dataset"]["status"]
+        self.assertTrue(clean_status["has_cleaned_dataset"])
+        self.assertFalse(clean_status["has_analysis_result"])
+
+        analyze_payload = self.analyze_current()
+        analyze_status = analyze_payload["data"]["state"]["active_dataset"]["status"]
+        self.assertTrue(analyze_status["has_analysis_result"])
+        self.assertFalse(analyze_status["has_prediction_result"])
 
     def test_export_uses_current_dataset_by_default_and_dataset_id_when_provided(self):
         first_id = self.upload_csv("first.csv", "name,sales\nA,10\nB,20\n")

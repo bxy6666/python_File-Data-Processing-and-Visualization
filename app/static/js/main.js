@@ -16,7 +16,6 @@ const predictRowsEl = document.querySelector("#predict-rows");
 const predictButtonEl = document.querySelector("#predict-button");
 const predictResultEl = document.querySelector("#predict-result");
 const predictColumnsEl = document.querySelector("#predict-columns");
-const predictExampleEl = document.querySelector("#predict-example");
 const predictFillExampleEl = document.querySelector("#predict-fill-example");
 const workflowMetrics = {
   rawRows: document.querySelector("#metric-raw-rows"),
@@ -35,7 +34,6 @@ const unavailableLabel = "暂不可用";
 const jsonHeaders = { "Content-Type": "application/json" };
 const supportedFilePattern = /\.(csv|xls|xlsx)$/i;
 let selectedUploadFiles = [];
-let currentPredictExampleRows = [];
 let currentClusterAxisRanges = {};
 let latestDatasets = [];
 let latestActiveDataset = null;
@@ -1153,6 +1151,11 @@ async function loadDatasets() {
 }
 
 function triggerDownload(exportData) {
+  if (Array.isArray(exportData?.files) && exportData.files.length) {
+    exportData.files.forEach((fileData) => triggerDownload(fileData));
+    return;
+  }
+
   const content = exportData?.content;
   if (content === undefined || content === null) {
     return;
@@ -1353,23 +1356,8 @@ function getAnalyzePayload() {
   };
 }
 
-function buildPredictExampleRows(columns = []) {
-  if (!Array.isArray(columns) || !columns.length) {
-    return [];
-  }
-
-  const rowA = {};
-  const rowB = {};
-  columns.forEach((column, index) => {
-    rowA[column] = Number((10 + (index + 1) * 2.5).toFixed(2));
-    rowB[column] = Number((30 + (index + 1) * 3.5).toFixed(2));
-  });
-
-  return [rowA, rowB];
-}
-
 function updatePredictGuidance(activeDataset) {
-  if (!predictColumnsEl && !predictExampleEl && !predictRowsEl && !predictFillExampleEl) {
+  if (!predictColumnsEl && !predictRowsEl && !predictFillExampleEl && !predictResultEl) {
     return;
   }
 
@@ -1377,12 +1365,8 @@ function updatePredictGuidance(activeDataset) {
   const hasColumns = Array.isArray(columns) && columns.length > 0;
 
   if (!hasColumns) {
-    currentPredictExampleRows = [];
     if (predictColumnsEl) {
       predictColumnsEl.textContent = "预测所需属性：请先完成 K-Means 分析后自动显示。";
-    }
-    if (predictExampleEl) {
-      predictExampleEl.textContent = "示例会在完成分析后自动生成。";
     }
     if (predictRowsEl) {
       predictRowsEl.placeholder = '[{"sales": 15, "profit": 2.3}, {"sales": 75, "profit": 9.8}]';
@@ -1390,30 +1374,30 @@ function updatePredictGuidance(activeDataset) {
     if (predictFillExampleEl) {
       predictFillExampleEl.disabled = true;
     }
+    if (predictResultEl) {
+      predictResultEl.textContent = "完成分析并执行预测后显示结果。";
+    }
     return;
   }
-
-  currentPredictExampleRows = buildPredictExampleRows(columns);
-  const prettyExample = JSON.stringify(currentPredictExampleRows, null, 2);
 
   if (predictColumnsEl) {
     predictColumnsEl.textContent = `预测所需属性：${columns.join("、")}`;
   }
-  if (predictExampleEl) {
-    predictExampleEl.textContent = prettyExample;
-  }
   if (predictRowsEl) {
-    predictRowsEl.placeholder = prettyExample;
+    predictRowsEl.placeholder = "点击“填充文件数据”自动填入当前已分析文件的完整可预测数据。";
   }
   if (predictFillExampleEl) {
     predictFillExampleEl.disabled = false;
+  }
+  if (predictResultEl) {
+    predictResultEl.textContent = "暂无预测结果。";
   }
 }
 
 function parsePredictRows() {
   const rawText = predictRowsEl?.value?.trim() || "";
   if (!rawText) {
-    throw new Error("请输入预测样本 JSON 数组");
+    throw new Error("请先点击“填充文件数据”，或手动输入预测样本 JSON 数组。");
   }
 
   let rows;
@@ -1425,6 +1409,31 @@ function parsePredictRows() {
 
   if (!Array.isArray(rows) || !rows.length) {
     throw new Error("预测输入必须是非空 JSON 数组");
+  }
+
+  return rows;
+}
+
+async function fillPredictRowsFromCurrentFile({ notify = true } = {}) {
+  const { response, data } = await requestJson("/api/predict/rows", {}, { silent: !notify });
+  if (!response.ok) {
+    throw new Error(data?.message || "读取当前文件可预测数据失败。");
+  }
+
+  const payload = data.data?.predict_rows || {};
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  if (!rows.length) {
+    throw new Error("当前分析后的文件没有可用于预测的完整数据行。");
+  }
+
+  if (predictRowsEl) {
+    predictRowsEl.value = JSON.stringify(rows, null, 2);
+  }
+  if (predictResultEl) {
+    predictResultEl.textContent = `已填充当前文件 ${payload.rows_used ?? rows.length} 行可预测数据，可点击“执行预测”。`;
+  }
+  if (notify) {
+    showLocalMessage(`已填充当前文件 ${payload.rows_used ?? rows.length} 行可预测数据。`);
   }
 
   return rows;
@@ -1501,14 +1510,28 @@ async function runPredictStep() {
     return;
   }
 
+  const rawText = predictRowsEl.value.trim();
   let rows;
-  try {
-    rows = parsePredictRows();
-  } catch (error) {
-    setStepState("predict", "error", "输入错误");
-    predictResultEl.textContent = error.message;
-    showLocalMessage(error.message, true);
-    return;
+  if (rawText) {
+    try {
+      rows = parsePredictRows();
+    } catch (error) {
+      setStepState("predict", "error", "输入错误");
+      predictResultEl.textContent = error.message;
+      showLocalMessage(error.message, true);
+      return;
+    }
+  } else {
+    setStepState("predict", "pending", "读取数据");
+    predictResultEl.textContent = "正在读取当前文件可预测数据...";
+    try {
+      rows = await fillPredictRowsFromCurrentFile({ notify: false });
+    } catch (error) {
+      setStepState("predict", "error", "数据未就绪");
+      predictResultEl.textContent = error.message;
+      showLocalMessage(error.message, true);
+      return;
+    }
   }
 
   setStepState("predict", "pending", "预测中");
@@ -1559,18 +1582,30 @@ if (predictButtonEl) {
 }
 
 if (predictFillExampleEl) {
-  predictFillExampleEl.addEventListener("click", () => {
+  predictFillExampleEl.addEventListener("click", async () => {
     if (!predictRowsEl) {
       return;
     }
 
-    if (!currentPredictExampleRows.length) {
-      showLocalMessage("请先完成分析后再填充示例。", true);
+    if (predictFillExampleEl.disabled) {
       return;
     }
 
-    predictRowsEl.value = JSON.stringify(currentPredictExampleRows, null, 2);
-    showLocalMessage("已填充预测示例，可直接点击执行预测。");
+    const originalText = predictFillExampleEl.textContent;
+    predictFillExampleEl.disabled = true;
+    predictFillExampleEl.textContent = "读取中";
+
+    try {
+      await fillPredictRowsFromCurrentFile();
+    } catch (error) {
+      if (predictResultEl) {
+        predictResultEl.textContent = error.message;
+      }
+      showLocalMessage(error.message, true);
+    } finally {
+      predictFillExampleEl.disabled = false;
+      predictFillExampleEl.textContent = originalText || "填充文件数据";
+    }
   });
 }
 

@@ -46,6 +46,10 @@ def connect_database():
         )
         """
     )
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(dataset_runs)").fetchall()}
+    if "prediction_result" not in columns:
+        connection.execute("ALTER TABLE dataset_runs ADD COLUMN prediction_result BLOB")
+    clear_pickled_nulls(connection)
     return connection
 
 
@@ -67,6 +71,30 @@ def deserialize(value):
     if value is None:
         return None
     return pickle.loads(value)
+
+
+def serialize_nullable(value):
+    if value is None:
+        return None
+    return serialize(value)
+
+
+def clear_pickled_nulls(connection):
+    nullable_fields = ("cleaned_dataset", "analysis_result", "prediction_result")
+    for field in nullable_fields:
+        rows = connection.execute(
+            f"SELECT id, {field} FROM dataset_runs WHERE {field} IS NOT NULL"
+        ).fetchall()
+        for dataset_id, stored_value in rows:
+            try:
+                value = deserialize(stored_value)
+            except (pickle.UnpicklingError, TypeError, EOFError):
+                continue
+            if value is None:
+                connection.execute(
+                    f"UPDATE dataset_runs SET {field} = NULL WHERE id = ?",
+                    (dataset_id,),
+                )
 
 
 def upsert_value(connection, key, value):
@@ -122,10 +150,11 @@ def _dataset_row_to_dict(row):
         "raw_dataset": deserialize(row[3]),
         "cleaned_dataset": deserialize(row[4]),
         "analysis_result": deserialize(row[5]),
-        "clean_summary": deserialize(row[6]) or {},
-        "analysis_summary": deserialize(row[7]) or {},
-        "created_at": row[8],
-        "updated_at": row[9],
+        "prediction_result": deserialize(row[6]),
+        "clean_summary": deserialize(row[7]) or {},
+        "analysis_summary": deserialize(row[8]) or {},
+        "created_at": row[9],
+        "updated_at": row[10],
     }
 
 
@@ -138,15 +167,16 @@ def _summary_row_to_dict(row, active_dataset_id=None):
         "id": dataset_id,
         "filename": row[1],
         "metadata": deserialize(row[2]) or {},
-        "clean_summary": deserialize(row[6]) or {},
-        "analysis_summary": deserialize(row[7]) or {},
-        "created_at": row[8],
-        "updated_at": row[9],
+        "clean_summary": deserialize(row[7]) or {},
+        "analysis_summary": deserialize(row[8]) or {},
+        "created_at": row[9],
+        "updated_at": row[10],
         "is_active": active_dataset_id == dataset_id,
         "status": {
             "has_raw_dataset": bool(row[3]),
             "has_cleaned_dataset": bool(row[4]),
             "has_analysis_result": bool(row[5]),
+            "has_prediction_result": bool(row[6]),
         },
     }
 
@@ -155,6 +185,7 @@ def _fetch_dataset(connection, dataset_id):
     row = connection.execute(
         """
         SELECT id, filename, metadata, raw_dataset, cleaned_dataset, analysis_result,
+               prediction_result,
                clean_summary, analysis_summary, created_at, updated_at
         FROM dataset_runs
         WHERE id = ?
@@ -171,6 +202,7 @@ def _fetch_dataset_summary(connection, dataset_id, active_dataset_id=None):
                raw_dataset IS NOT NULL,
                cleaned_dataset IS NOT NULL,
                analysis_result IS NOT NULL,
+               prediction_result IS NOT NULL,
                clean_summary, analysis_summary, created_at, updated_at
         FROM dataset_runs
         WHERE id = ?
@@ -187,6 +219,7 @@ def _fetch_all_dataset_summaries(connection, active_dataset_id=None):
                raw_dataset IS NOT NULL,
                cleaned_dataset IS NOT NULL,
                analysis_result IS NOT NULL,
+               prediction_result IS NOT NULL,
                clean_summary, analysis_summary, created_at, updated_at
         FROM dataset_runs
         ORDER BY updated_at DESC, id DESC
@@ -286,13 +319,19 @@ def _update_active_dataset(**fields):
     if dataset_id is None:
         raise ValueError("请先上传数据")
 
-    allowed_fields = {"cleaned_dataset", "analysis_result", "clean_summary", "analysis_summary"}
+    allowed_fields = {
+        "cleaned_dataset",
+        "analysis_result",
+        "prediction_result",
+        "clean_summary",
+        "analysis_summary",
+    }
     unknown_fields = set(fields) - allowed_fields
     if unknown_fields:
         raise ValueError(f"不支持更新字段：{', '.join(sorted(unknown_fields))}")
 
     assignments = [f"{field} = ?" for field in fields]
-    values = [serialize(value) for value in fields.values()]
+    values = [serialize_nullable(value) for value in fields.values()]
     assignments.append("updated_at = CURRENT_TIMESTAMP")
 
     with database_connection() as connection:
@@ -327,6 +366,7 @@ def set_cleaned_dataset(dataset, summary=None):
         cleaned_dataset=dataset,
         clean_summary=summary or {},
         analysis_result=None,
+        prediction_result=None,
         analysis_summary={},
     )
 
@@ -336,11 +376,19 @@ def get_cleaned_dataset(dataset_id=None):
 
 
 def set_analysis_result(result, summary=None):
-    _update_active_dataset(analysis_result=result, analysis_summary=summary or {})
+    _update_active_dataset(analysis_result=result, analysis_summary=summary or {}, prediction_result=None)
 
 
 def get_analysis_result(dataset_id=None):
     return _get_dataset_value("analysis_result", dataset_id)
+
+
+def set_prediction_result(result):
+    _update_active_dataset(prediction_result=result)
+
+
+def get_prediction_result(dataset_id=None):
+    return _get_dataset_value("prediction_result", dataset_id)
 
 
 def _json_safe_value(value):
@@ -400,12 +448,56 @@ def get_dataset_preview(dataset_id=None, dataset_type="raw", limit=10):
     }
 
 
+def get_predict_input_rows(dataset_id=None):
+    dataframe = get_cleaned_dataset(dataset_id)
+    analysis_result = get_analysis_result(dataset_id)
+    if dataframe is None or analysis_result is None:
+        return None
+
+    model = analysis_result.get("model") if isinstance(analysis_result, dict) else {}
+    columns = model.get("columns") or analysis_result.get("columns")
+    if not isinstance(columns, list) or not columns:
+        raise ValueError("当前分析结果缺少可预测字段")
+
+    missing_columns = [column for column in columns if column not in dataframe.columns]
+    if missing_columns:
+        raise ValueError(f"清洗后数据缺少字段: {', '.join(missing_columns)}")
+
+    selected_dataframe = dataframe[columns].copy()
+    rows_received = len(selected_dataframe)
+    selected_dataframe = selected_dataframe.dropna(axis=0, how="any")
+
+    try:
+        selected_dataframe = selected_dataframe.astype(float)
+    except (TypeError, ValueError) as error:
+        raise ValueError("预测字段必须都是数值类型") from error
+
+    rows = []
+    for row_values in selected_dataframe.itertuples(index=False, name=None):
+        rows.append(
+            {
+                column: _json_safe_value(row_values[index])
+                for index, column in enumerate(columns)
+            }
+        )
+
+    return {
+        "dataset_id": _resolve_dataset_id(dataset_id),
+        "columns": columns,
+        "rows": rows,
+        "rows_received": int(rows_received),
+        "rows_used": int(len(selected_dataframe)),
+        "rows_skipped": int(rows_received - len(selected_dataframe)),
+    }
+
+
 def get_export_state(dataset_id=None):
     return {
         "dataset_id": _resolve_dataset_id(dataset_id),
         "raw_dataset": get_raw_dataset(dataset_id),
         "cleaned_dataset": get_cleaned_dataset(dataset_id),
         "analysis_result": get_analysis_result(dataset_id),
+        "prediction_result": get_prediction_result(dataset_id),
         "metadata": get_metadata() if dataset_id is None else (get_dataset_summary(dataset_id) or {}),
     }
 

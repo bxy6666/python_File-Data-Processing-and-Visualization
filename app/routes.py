@@ -7,6 +7,7 @@ from .utils.data_store import (
     get_analysis_result,
     get_cleaned_dataset,
     get_dataset_preview,
+    get_predict_input_rows,
     get_dataset_summary,
     get_export_state,
     get_raw_dataset,
@@ -14,6 +15,7 @@ from .utils.data_store import (
     list_dataset_runs,
     set_analysis_result,
     set_cleaned_dataset,
+    set_prediction_result,
     set_raw_dataset,
     state_summary,
 )
@@ -198,6 +200,36 @@ def upload_file():
     )
 
 
+@bp.get("/api/predict/rows")
+def predict_rows():
+    try:
+        rows_payload = get_predict_input_rows()
+    except ValueError as error:
+        return error_response("INVALID_PREDICT_ROWS", str(error), http_status=400)
+
+    if rows_payload is None:
+        return error_response(
+            "DATA_NOT_READY",
+            "请先完成数据清洗和 K-Means 分析",
+            {"required": "cleaned_dataset, analysis_result", "state": state_summary()},
+            409,
+        )
+
+    if not rows_payload["rows"]:
+        return error_response(
+            "DATA_NOT_READY",
+            "当前分析后的文件没有可用于预测的完整数据行",
+            {"required": "complete numeric rows", "state": state_summary()},
+            409,
+        )
+
+    return success_response(
+        "PREDICT_ROWS_OK",
+        "已读取当前文件可预测数据",
+        {"predict_rows": rows_payload, "state": state_summary()},
+    )
+
+
 @bp.post("/api/clean")
 def clean_data():
     dataframe = get_raw_dataset()
@@ -301,12 +333,18 @@ def predict_data():
     except ValueError as error:
         return error_response("INVALID_PREDICT_INPUT", str(error), http_status=400)
 
+    prediction_payload = {
+        "summary": result.get("summary", {}),
+        "result": result.get("result"),
+    }
+    set_prediction_result(prediction_payload)
+
     return success_response(
         "PREDICT_OK",
         "预测完成",
         {
-            "summary": result.get("summary", {}),
-            "result": result.get("result"),
+            "summary": prediction_payload["summary"],
+            "result": prediction_payload["result"],
             "state": state_summary(),
         },
     )
