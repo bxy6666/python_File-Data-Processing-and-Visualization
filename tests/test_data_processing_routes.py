@@ -36,6 +36,17 @@ class DataProcessingRouteTests(unittest.TestCase):
         self.assertEqual(payload["data"]["file"]["columns"], ["name", "sales"])
         self.assertEqual(captured["dataset"]["sales"].tolist(), [10, 20])
 
+    def test_workflow_page_keeps_predict_and_export_sections_separate(self):
+        response = self.client.get("/workflow")
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(html.count('data-step="predict"'), 1)
+        self.assertEqual(html.count('id="export-panel"'), 1)
+        self.assertLess(html.index('data-step="predict"'), html.index('id="export-panel"'))
+        self.assertIn('id="predict-fill-example" type="button" disabled', html)
+        self.assertIn('id="predict-button" type="button" disabled', html)
+
     def test_clean_endpoint_cleans_raw_dataset_and_returns_summary(self):
         raw_dataset = pd.DataFrame({"sales": [10, 10, None, 20], "profit": [1, 1, 2, 3]})
         captured = {}

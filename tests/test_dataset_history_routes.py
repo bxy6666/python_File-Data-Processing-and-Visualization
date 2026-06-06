@@ -82,6 +82,30 @@ class DatasetHistoryRouteTests(unittest.TestCase):
         self.assertTrue(analyze_status["has_analysis_result"])
         self.assertFalse(analyze_status["has_prediction_result"])
 
+    def test_prediction_flow_stores_result_on_active_dataset(self):
+        self.upload_csv(
+            "predict.csv",
+            "name,sales,profit\nA,10,1\nB,12,1.2\nC,100,9\nD,105,9.5\n",
+        )
+        self.clean_current()
+        self.analyze_current()
+
+        rows_response = self.client.get("/api/predict/rows")
+        rows_payload = rows_response.get_json()
+        rows = rows_payload["data"]["predict_rows"]["rows"]
+
+        predict_response = self.client.post("/api/predict", json={"rows": rows[:2]})
+        predict_payload = predict_response.get_json()
+
+        self.assertEqual(rows_response.status_code, 200)
+        self.assertGreaterEqual(len(rows), 2)
+        self.assertEqual(predict_response.status_code, 200)
+        self.assertEqual(predict_payload["code"], "PREDICT_OK")
+        self.assertEqual(predict_payload["data"]["summary"]["rows_used"], 2)
+        self.assertTrue(
+            predict_payload["data"]["state"]["active_dataset"]["status"]["has_prediction_result"]
+        )
+
     def test_export_uses_current_dataset_by_default_and_dataset_id_when_provided(self):
         first_id = self.upload_csv("first.csv", "name,sales\nA,10\nB,20\n")
         self.clean_current()

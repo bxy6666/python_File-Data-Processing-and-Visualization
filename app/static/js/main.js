@@ -37,6 +37,7 @@ let selectedUploadFiles = [];
 let currentClusterAxisRanges = {};
 let latestDatasets = [];
 let latestActiveDataset = null;
+let currentPredictContextKey = "";
 
 const stepStateLabels = {
   idle: "待调用",
@@ -1357,12 +1358,17 @@ function getAnalyzePayload() {
 }
 
 function updatePredictGuidance(activeDataset) {
-  if (!predictColumnsEl && !predictRowsEl && !predictFillExampleEl && !predictResultEl) {
+  if (!predictColumnsEl && !predictRowsEl && !predictFillExampleEl && !predictResultEl && !predictButtonEl) {
     return;
   }
 
   const columns = activeDataset?.analysis_summary?.columns;
   const hasColumns = Array.isArray(columns) && columns.length > 0;
+  const contextKey = hasColumns
+    ? `${activeDataset?.id || "none"}:${columns.join("|")}`
+    : `${activeDataset?.id || "none"}:not-ready`;
+  const contextChanged = contextKey !== currentPredictContextKey;
+  currentPredictContextKey = contextKey;
 
   if (!hasColumns) {
     if (predictColumnsEl) {
@@ -1370,11 +1376,17 @@ function updatePredictGuidance(activeDataset) {
     }
     if (predictRowsEl) {
       predictRowsEl.placeholder = '[{"sales": 15, "profit": 2.3}, {"sales": 75, "profit": 9.8}]';
+      if (contextChanged) {
+        predictRowsEl.value = "";
+      }
     }
     if (predictFillExampleEl) {
       predictFillExampleEl.disabled = true;
     }
-    if (predictResultEl) {
+    if (predictButtonEl) {
+      predictButtonEl.disabled = true;
+    }
+    if (predictResultEl && contextChanged) {
       predictResultEl.textContent = "完成分析并执行预测后显示结果。";
     }
     return;
@@ -1385,11 +1397,17 @@ function updatePredictGuidance(activeDataset) {
   }
   if (predictRowsEl) {
     predictRowsEl.placeholder = "点击“填充文件数据”自动填入当前已分析文件的完整可预测数据。";
+    if (contextChanged) {
+      predictRowsEl.value = "";
+    }
   }
   if (predictFillExampleEl) {
     predictFillExampleEl.disabled = false;
   }
-  if (predictResultEl) {
+  if (predictButtonEl) {
+    predictButtonEl.disabled = false;
+  }
+  if (predictResultEl && contextChanged) {
     predictResultEl.textContent = "暂无预测结果。";
   }
 }
@@ -1412,6 +1430,11 @@ function parsePredictRows() {
   }
 
   return rows;
+}
+
+function isPredictReady(activeDataset = latestActiveDataset) {
+  const columns = activeDataset?.analysis_summary?.columns;
+  return Array.isArray(columns) && columns.length > 0;
 }
 
 async function fillPredictRowsFromCurrentFile({ notify = true } = {}) {
@@ -1575,7 +1598,7 @@ if (predictButtonEl) {
     try {
       await runPredictStep();
     } finally {
-      predictButtonEl.disabled = false;
+      predictButtonEl.disabled = !isPredictReady();
       predictButtonEl.textContent = "执行预测";
     }
   });
@@ -1603,7 +1626,7 @@ if (predictFillExampleEl) {
       }
       showLocalMessage(error.message, true);
     } finally {
-      predictFillExampleEl.disabled = false;
+      predictFillExampleEl.disabled = !isPredictReady();
       predictFillExampleEl.textContent = originalText || "填充文件数据";
     }
   });
