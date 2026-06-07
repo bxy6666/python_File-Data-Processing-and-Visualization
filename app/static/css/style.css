@@ -342,12 +342,27 @@ label {
   border-radius: 50%;
   background: #ffffff;
   box-shadow: inset 0 0 0 7px #eef3f6;
+  animation: flow-node-cycle 10s ease-in-out infinite;
 }
 
-.flow-node.is-active {
-  border-color: rgba(79, 70, 229, 0.38);
-  background: var(--accent);
-  box-shadow: 0 0 0 6px rgba(79, 70, 229, 0.12);
+.flow-node:nth-of-type(1) {
+  animation-delay: 0s;
+}
+
+.flow-node:nth-of-type(3) {
+  animation-delay: 2s;
+}
+
+.flow-node:nth-of-type(5) {
+  animation-delay: 4s;
+}
+
+.flow-node:nth-of-type(7) {
+  animation-delay: 6s;
+}
+
+.flow-node:nth-of-type(9) {
+  animation-delay: 8s;
 }
 
 .flow-link {
@@ -355,6 +370,22 @@ label {
   width: 34px;
   height: 2px;
   background: var(--line);
+}
+
+@keyframes flow-node-cycle {
+  0%,
+  19% {
+    border-color: rgba(79, 70, 229, 0.42);
+    background: var(--accent);
+    box-shadow: 0 0 0 7px rgba(79, 70, 229, 0.13), 0 0 22px rgba(79, 70, 229, 0.24);
+  }
+
+  20%,
+  100% {
+    border-color: var(--line);
+    background: #ffffff;
+    box-shadow: inset 0 0 0 7px #eef3f6;
+  }
 }
 
 .welcome-actions,
@@ -1861,6 +1892,25 @@ label {
   line-height: 1.6;
 }
 
+.chart-placeholder.has-chart {
+  display: block;
+  width: 100%;
+  min-height: 540px;
+  border-style: solid;
+  border-color: var(--line);
+  padding: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: initial;
+  overflow: hidden;
+}
+
+.chart-placeholder.has-chart .js-plotly-plot,
+.chart-placeholder.has-chart .plot-container,
+.chart-placeholder.has-chart .svg-container {
+  width: 100% !important;
+}
+
 .chart-summary {
   margin-top: 14px;
   border: 1px solid var(--line);
@@ -1891,6 +1941,10 @@ label {
 
 .visual-workspace .chart-placeholder {
   min-height: 360px;
+}
+
+.visual-workspace .chart-placeholder.has-chart {
+  min-height: 560px;
 }
 
 @media (max-width: 1180px) {
