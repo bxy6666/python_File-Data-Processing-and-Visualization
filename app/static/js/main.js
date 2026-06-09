@@ -32,6 +32,11 @@ const visualPanel = document.querySelector('[data-step="visual"]');
 const chartChoiceButtons = document.querySelectorAll("[data-chart-choice]");
 const unavailableLabel = "暂不可用";
 const jsonHeaders = { "Content-Type": "application/json" };
+const plotlyConfig = {
+  responsive: true,
+  displaylogo: false,
+  modeBarButtonsToRemove: ["lasso2d", "select2d"],
+};
 const supportedFilePattern = /\.(csv|xls|xlsx)$/i;
 let selectedUploadFiles = [];
 let currentClusterAxisRanges = {};
@@ -104,6 +109,39 @@ function postJson(url, payload) {
     headers: jsonHeaders,
     body: JSON.stringify(payload),
   });
+}
+
+function nextFrame() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+async function waitForPlotly() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (window.Plotly?.react) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+async function renderPlotlyFigure(container, figure) {
+  container.classList.add("has-chart");
+  container.textContent = "";
+  await nextFrame();
+
+  const plotlyReady = await waitForPlotly();
+  if (!plotlyReady) {
+    throw new Error("Plotly.js 尚未加载完成，请检查网络或稍后重试。");
+  }
+
+  await Plotly.react(container, figure.data, figure.layout || {}, plotlyConfig);
+  await nextFrame();
+  if (Plotly.Plots?.resize) {
+    Plotly.Plots.resize(container);
+  }
 }
 
 function finishStep(stepName, response, successLabel) {
@@ -1682,9 +1720,20 @@ if (visualForm) {
       if (visualPanel) {
         visualPanel.dataset.state = "success";
       }
-      Plotly.react(chartEl, responseData.figure.data, responseData.figure.layout || {}, { responsive: true });
-      if (chartDescriptionEl) {
-        chartDescriptionEl.textContent = responseData.description || "图表已创建。";
+      try {
+        await renderPlotlyFigure(chartEl, responseData.figure);
+        if (chartDescriptionEl) {
+          chartDescriptionEl.textContent = responseData.description || "图表已创建。";
+        }
+      } catch (error) {
+        if (visualPanel) {
+          visualPanel.dataset.state = "error";
+        }
+        chartEl.classList.remove("has-chart");
+        chartEl.textContent = error.message || "图表渲染失败，请稍后重试。";
+        if (chartDescriptionEl) {
+          chartDescriptionEl.textContent = error.message || "图表渲染失败，请稍后重试。";
+        }
       }
       return;
     }
@@ -1693,6 +1742,7 @@ if (visualForm) {
       visualPanel.dataset.state = response.ok ? "success" : "unavailable";
     }
     if (chartEl) {
+      chartEl.classList.remove("has-chart");
       Plotly.purge(chartEl);
       chartEl.textContent = "请先完成上传、清洗或分析后再生成图表。";
     }
@@ -1703,6 +1753,7 @@ if (visualForm) {
 }
 
 if (chartEl) {
+  chartEl.classList.remove("has-chart");
   chartEl.textContent = "上传并处理数据后，图表会显示在这里。";
 }
 

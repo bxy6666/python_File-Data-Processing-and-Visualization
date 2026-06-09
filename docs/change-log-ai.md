@@ -1,5 +1,16 @@
 # AI 修改记录
 
+## 2026-06-07
+
+- 新增 `docs/chart_visualization_implementation_guide.md`，整理成员C图表呈现实现文档，说明 bar、line、scatter、box 四类图表的数据来源、函数写入位置、SQLite 状态读取链路、Plotly figure 返回格式和验证方式。
+- 完善图表展示功能：优化 `chart_utils.py` 中四类 Plotly 图的统一布局、hover 说明、颜色、边距和聚类标签映射；修复图表成功生成后仍沿用占位框样式导致显示位置不自然的问题，并为前端图表容器新增真实画布状态。
+- 调整散点图显示密度：将散点 marker 缩小为原来的四分之一，增加轻微可重复的显示错位以减少点重叠，并将散点图坐标轴刻度改为低精度紧凑格式。
+- 修复图表页首次创建后不显示、刷新后才显示的问题：将 Plotly.js 从外部 CDN 改为 Flask 本地路由提供，并在前端渲染前等待画布布局和 Plotly 脚本就绪。
+
+## 2026-06-06
+
+- 检查四种图表（bar、line、scatter、box）的现有数据接口与数据支持：上传、清洗、K-Means 分析链路可提供 `cleaned_dataset` 与 `analysis_result`，`/api/visualize` 已接收四种 `chart` 类型并向 `create_chart_response(chart, cleaned_dataset, analysis_result)` 传入数据；当前图表生成仍返回 `NOT_IMPLEMENTED`，尚未返回 Plotly `figure`，需成员C补充具体图表生成逻辑。
+
 ## 2026-06-03
 
 - 根据 `README.md` 的最新分工同步项目级 `AGENTS.md`：成员A负责框架、前端、后端路由与接口调度；成员B负责数据读取、导出与清洗；成员C负责可视化；成员D负责数据分析与机器学习。
@@ -34,6 +45,7 @@
 - 处理流程页新增进度观察和结果摘要：展示上传、清洗、分析、导出阶段状态，以及清洗影响、聚类概览和类别分布。
 - 移除数据管理、处理流程、图表分析页的调试响应窗口，并清理对应模板、JS 和 CSS 遗留代码；操作结果改为页面内状态提示。
 - 新增 `src/components/DataFileUploadPanel.vue` 作为 Vue / Element Plus 参考组件，不接入当前 Flask 原生前端运行时。
+- 将工作台右侧流程示意改为 5 个节点慢速循环点亮动画，保持原生 CSS 实现，不引入额外依赖。
 
 ## 2026-06-02
 

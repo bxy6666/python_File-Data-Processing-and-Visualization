@@ -5,7 +5,7 @@
 {% block page_subtitle %}选择图表类型，系统会根据数据生成展示内容和说明。{% endblock %}
 
 {% block head %}
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="{{ url_for('main.plotly_asset') }}"></script>
 {% endblock %}
 
 {% block content %}

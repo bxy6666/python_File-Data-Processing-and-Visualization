@@ -1,4 +1,4 @@
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, Response, redirect, render_template, request, url_for
 
 from .utils.chart_utils import create_chart_response
 from .utils.clean_utils import analyze_cleaning_needs, clean_dataframe
@@ -75,6 +75,13 @@ def workflow():
 @bp.route("/visualization")
 def visualization():
     return render_template("visualization.html", active_page="visualization")
+
+
+@bp.get("/assets/plotly.min.js")
+def plotly_asset():
+    from plotly.offline import get_plotlyjs
+
+    return Response(get_plotlyjs(), mimetype="application/javascript")
 
 
 @bp.get("/api/datasets")
